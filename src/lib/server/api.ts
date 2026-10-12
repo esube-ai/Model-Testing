@@ -55,7 +55,7 @@ export function parseOptions(input: unknown): Pick<ChatOptions, "system" | "temp
 export function errorResponse(e: unknown, apiKey: string | undefined, route: string): Response {
   const err = e instanceof HarnessError ? e : new HarnessError("network", e instanceof Error ? e.message : String(e), { apiKey });
   if (err.code !== "cancelled") safeLog("error", apiKey, `[${route}] ${err.code}: ${err.detail}`);
-  const status = err.code === "invalid_input" ? 400 : err.code === "host_not_allowed" ? 403 : 502;
+  const status = err.code === "invalid_input" || err.code === "unsupported" ? 400 : err.code === "host_not_allowed" ? 403 : 502;
   return Response.json({ error: err.toJSON() }, { status, headers: { "cache-control": "no-store" } });
 }
 

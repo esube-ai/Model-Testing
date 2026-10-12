@@ -17,6 +17,8 @@
  * A last user message containing "long story" streams many slow chunks (for Stop tests),
  * and one containing "rich demo" replies with every supported content type (RICH_DEMO).
  * Paths prefixed with /nomodels have no model-list endpoint.
+ * POST /v1/embeddings returns deterministic "semantic" vectors (see mockEmbedding); the
+ * embedding model "missing-embed" returns 404.
  *
  * Run standalone: `node tests/mock/provider.ts [port]`
  */
@@ -75,6 +77,26 @@ export interface MockProvider {
   close: () => Promise<void>;
 }
 
+/** Words the mock embedding model treats as meaning the same thing. */
+const SYNONYMS: Record<string, string> = {
+  car: "vehicle", cars: "vehicle", automobile: "vehicle", automobiles: "vehicle", vehicles: "vehicle",
+  upkeep: "maintenance", servicing: "maintenance", service: "maintenance",
+  cost: "price", costs: "price", prices: "price", pricing: "price",
+};
+
+/** Deterministic bag-of-words embedding (64 dims) that maps synonyms together. */
+export function mockEmbedding(text: string): number[] {
+  const vec = new Array(64).fill(0);
+  for (const raw of text.toLowerCase().match(/[a-z0-9]+/g) ?? []) {
+    const word = SYNONYMS[raw] ?? raw;
+    let h = 2166136261;
+    for (const ch of word) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+    vec[(h >>> 0) % 64] += 1;
+  }
+  const norm = Math.hypot(...vec) || 1;
+  return vec.map((v) => v / norm);
+}
+
 interface Body {
   model?: string;
   stream?: boolean;
@@ -120,7 +142,8 @@ export async function startMockProvider(port = 0): Promise<MockProvider> {
     const error = (status: number, type: string, message: string) =>
       isAnthropic ? json(status, { type: "error", error: { type, message } }) : json(status, { error: { message, type, code: type } });
 
-    const known = path === "/v1/chat/completions" || path === "/v1/messages" || (path === "/v1/models" && modelsSupported);
+    const known =
+      path === "/v1/chat/completions" || path === "/v1/messages" || path === "/v1/embeddings" || (path === "/v1/models" && modelsSupported);
     if (!known) return json(404, { error: "Not found" });
     if (key !== VALID_KEY) {
       // Deliberately echo the key, like some real providers do, to test redaction.
@@ -130,6 +153,18 @@ export async function startMockProvider(port = 0): Promise<MockProvider> {
       return json(200, isAnthropic
         ? { data: MOCK_MODELS.map((id) => ({ type: "model", id, display_name: id })), has_more: false }
         : { object: "list", data: MOCK_MODELS.map((id) => ({ id, object: "model" })) });
+    }
+
+    if (path === "/v1/embeddings") {
+      let req: { model?: string; input?: string[] } = {};
+      try {
+        req = JSON.parse(raw);
+      } catch {
+        return error(400, "invalid_request_error", "Invalid JSON");
+      }
+      if (req.model === "missing-embed") return error(404, "not_found_error", `The model \`${req.model}\` does not exist`);
+      const inputs = Array.isArray(req.input) ? req.input : [];
+      return json(200, { object: "list", model: req.model, data: inputs.map((t, index) => ({ object: "embedding", index, embedding: mockEmbedding(String(t)) })) });
     }
 
     let body: Body = {};
@@ -183,7 +218,8 @@ export async function startMockProvider(port = 0): Promise<MockProvider> {
       res.write(`${event ? `event: ${event}\n` : ""}data: ${typeof data === "string" ? data : JSON.stringify(data)}\n\n`);
     };
     const chunks = reply.match(/\S+\s*/g) ?? [reply];
-    const delay = long ? 100 : 20;
+    // Long echoes (e.g. questions with file excerpts) stream quickly so tests stay fast.
+    const delay = long ? 100 : chunks.length > 100 ? 1 : 20;
 
     if (isAnthropic) {
       send({ type: "message_start", message: { id: "msg_1", type: "message", role: "assistant", model, content: [], usage: { input_tokens: 5, output_tokens: 1 } } }, "message_start");

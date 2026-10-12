@@ -1,18 +1,21 @@
 "use client";
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { SendIcon, StopIcon } from "./Icons";
+import { ACCEPT } from "@/lib/rag/extract";
+import { PaperclipIcon, SendIcon, StopIcon } from "./Icons";
 
 interface Props {
   generating: boolean;
   disabled: boolean;
   onSend: (text: string) => void;
   onStop: () => void;
+  onAttach: (files: File[]) => void;
 }
 
-export function Composer({ generating, disabled, onSend, onStop }: Props) {
+export function Composer({ generating, disabled, onSend, onStop, onAttach }: Props) {
   const [text, setText] = useState("");
   const ref = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   // Grow with content, up to a limit.
   useEffect(() => {
@@ -43,6 +46,28 @@ export function Composer({ generating, disabled, onSend, onStop }: Props) {
       }}
       className="flex items-end gap-2 rounded-2xl border border-zinc-300 bg-white p-2 shadow-sm focus-within:ring-2 focus-within:ring-blue-500 dark:border-zinc-600 dark:bg-zinc-900"
     >
+      <input
+        ref={fileRef}
+        type="file"
+        multiple
+        accept={ACCEPT}
+        className="hidden"
+        data-testid="file-input"
+        onChange={(e) => {
+          const files = [...(e.target.files ?? [])];
+          e.target.value = "";
+          if (files.length) onAttach(files);
+        }}
+      />
+      <button
+        type="button"
+        onClick={() => fileRef.current?.click()}
+        aria-label="Attach files"
+        title="Attach files (PDF, Word, text)"
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:ring-2 focus-visible:ring-blue-500 focus:outline-none dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+      >
+        <PaperclipIcon />
+      </button>
       <label htmlFor="composer" className="sr-only">
         Message
       </label>

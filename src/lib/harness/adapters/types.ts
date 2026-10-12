@@ -48,6 +48,10 @@ export interface ProviderAdapter {
   parseStreamEvent(event: SseEvent): StreamDelta | null;
   /** Returns null when the JSON doesn't look like a model list. */
   parseModels(json: unknown): string[] | null;
+  /** Optional: formats without an embeddings API leave these out. */
+  embeddingsBody?(model: string, inputs: string[]): unknown;
+  /** Returns null when the JSON doesn't look like an embeddings response. */
+  parseEmbeddings?(json: unknown, count: number): number[][] | null;
 }
 
 export function isObject(v: unknown): v is Record<string, unknown> {

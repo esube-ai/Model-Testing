@@ -82,3 +82,10 @@ export async function* streamChatApi(
     }
   }
 }
+
+/** Embedding vectors for `inputs`, one per input. Throws ApiError on failure. */
+export async function embedApi(connection: Connection, model: string, inputs: string[], signal?: AbortSignal): Promise<number[][]> {
+  const res = await post("/api/embeddings", { connection, model, inputs }, signal);
+  if (!res.ok) throw await errorFrom(res);
+  return ((await res.json()) as { vectors: number[][] }).vectors;
+}

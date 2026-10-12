@@ -55,6 +55,17 @@ Your key is never shown on screen (not even partly) and is never included in exp
 - **Export** (top right) downloads the current conversation as Markdown (easy to read) or JSON (for tools). Exports include your 👍 / 👎 ratings, chat settings, model name, host and timestamps. They never include your API key.
 - In the left sidebar you can start a **New chat**, switch between chats, and rename or delete them. On a phone, tap ☰ to open it.
 
+### Attaching files
+
+Click the 📎 paperclip next to the message box, or drag files onto the chat, to let the model answer questions about your documents.
+
+- **Supported files:** PDF, Word (.docx), and text-based files such as .txt, .md, .csv, .json, .html and code. Each file can be up to 20 MB, and a chat can hold up to 20 files.
+- **Which chat they belong to:** files belong to the chat you attach them in. **New chat** starts without them, and deleting a chat deletes its files. Click ✕ on a file to remove it.
+- **How it works:** when you ask a question, the app picks the parts of your files that best match it and sends them along with your question. Small files are sent whole, so "summarize this file" works too. The model is asked to cite the parts it used, like [1], and you can open **Sources from your files** under each answer to see exactly which parts were sent, with page numbers for PDFs.
+- **Smarter matching (optional):** by default the app matches on keywords. If your provider offers embeddings (most OpenAI-compatible ones do), open **Chat settings** and enter an embedding model name, such as `text-embedding-3-small`. The app then also matches by meaning, so "car upkeep" finds "automobile maintenance". If that model doesn't work, you'll see a note and keyword matching is used instead.
+- **Privacy:** files are read and stored only in your browser, never saved on the server. Only the parts picked for each question are sent to the model provider, through this app's server.
+- **Not supported:** scanned PDFs without selectable text, password-protected PDFs, and old .doc files. Save those as a text-based PDF or .docx first.
+
 ### What replies can show
 
 | The model writes… | You see… |
@@ -140,6 +151,9 @@ The app has no login. Anyone with the link can open it, although they still need
 | "This app only allows these model hosts" | The person running the app set `ALLOWED_API_HOSTS`. Ask them to add your provider. On Vercel: project → **Settings → Environment Variables**, then redeploy. |
 | "This app is running online, so it can't reach local or private-network addresses" | You're using the hosted version with a model on your own computer or office network. Use the provider's public address, or run the app locally with `npm run dev`. |
 | "This model needs the reasoning from earlier replies, which this chat doesn't have" | The chat was started before the app saved reasoning, or the reply was stopped early. Start a **New chat**. |
+| "isn't a supported file type" / "has no selectable text" | Attach PDF, Word (.docx) or text files. For a scanned PDF, use a version with selectable text (try selecting text in your PDF viewer). |
+| The answer ignores your file | Open **Sources from your files** under the answer to see what was sent. Try using words that appear in the document, or set a **Semantic search model** in Chat settings. |
+| "Semantic search didn't work" | The embedding model name in Chat settings is wrong, or your provider has no embeddings. Fix the name or clear the field to use keyword search. |
 | "Your browser is blocking storage" | Private browsing or strict privacy settings are on. The app still works, but chats and the connection are lost when you reload. |
 
 ---
@@ -166,6 +180,13 @@ The tests never contact a real model API. `tests/mock/provider.ts` is a local se
   - `security.ts`: URL validation, `ALLOWED_API_HOSTS`, fixed endpoint paths.
 - `src/app/api/{chat,test-connection,models}/route.ts`: the app's own server routes. The browser only talks to these.
 - `src/components/`: the UI. `src/lib/client/`: browser storage, API calls, export.
+- `src/lib/rag/`: attached files and retrieval, all in the browser.
+  - `extract.ts`: reads text from PDF (pdf.js), .docx (mammoth), HTML and text files. The two libraries are loaded only when needed.
+  - `chunk.ts`: splits text into chunks of about 1,200 characters, with 150 characters of overlap, keeping PDF page numbers.
+  - `store.ts`: IndexedDB storage, separate from conversations and credentials, with an in-memory fallback.
+  - `bm25.ts`, `select.ts`: chooses which chunks to send. If a chat's files total 12,000 characters or less, all of it is sent. Otherwise up to 8 chunks are chosen within that budget, ranked by BM25 keyword score, merged with embedding similarity (Reciprocal Rank Fusion) when a semantic search model is set.
+  - `prompt.ts`: builds the message: numbered excerpts inside `<files>…</files>`, an instruction to cite them, and an instruction not to follow instructions found inside them.
+- `src/app/api/embeddings/route.ts`: the server route for embeddings. It is stateless like the others; vectors are cached in IndexedDB per host and model.
 
 ### Assumptions about provider APIs
 
@@ -183,4 +204,5 @@ These follow the public OpenAI and Anthropic documentation. Providers that diffe
 
   Anthropic requests never include it.
 - **Error mapping.** 401/403 → bad key. 404 → model not found if the error mentions "model", otherwise wrong URL. 429 → rate limit. 5xx → provider trouble. A reply that doesn't match the selected format → wrong API format.
+- **Embeddings.** Semantic search uses `POST {base}/embeddings` with `{ model, input: string[], encoding_format: "float" }` and reads `data[].embedding` (OpenAI format), 32 inputs per request. The Anthropic API has no embeddings endpoint, so only keyword search is used with that format.
 - **Rendering.** GitHub-flavoured Markdown (`remark-gfm`), LaTeX math (`remark-math` + KaTeX, `$…$` and `$$…$$` delimiters), raw HTML (`rehype-raw`, then `rehype-sanitize` with GitHub's allow-list), Mermaid diagrams (loaded on demand, `securityLevel: "strict"`), and SVG shown via `<img>` data URLs. Images are allowed from `http(s)` and `data:image/(png|jpeg|gif|webp|avif|svg+xml)` only. `package.json` overrides nested `katex` copies to the patched 0.19 release.

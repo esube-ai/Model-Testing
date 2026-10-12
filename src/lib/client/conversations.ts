@@ -1,4 +1,5 @@
 import type { ChatMetadata, ConnectionField, HarnessErrorCode } from "@/lib/harness";
+import type { Source } from "@/lib/rag/types";
 import { readJson, writeJson } from "./storage";
 
 export const CONVERSATIONS_KEY = "model-testing.conversations";
@@ -7,6 +8,8 @@ export interface ChatSettings {
   systemPrompt: string;
   temperature: number | null;
   maxTokens: number | null;
+  /** Embedding model for semantic search over attached files; blank = keyword search only. */
+  embeddingModel?: string;
 }
 
 export const DEFAULT_SETTINGS: ChatSettings = { systemPrompt: "", temperature: null, maxTokens: null };
@@ -30,6 +33,12 @@ export interface Message {
   metadata?: ChatMetadata;
   /** Assistant only: the model's reasoning ("thinking"), when it returns any. */
   reasoning?: string;
+  /** Assistant only: file excerpts that were sent with the question, for citations. */
+  sources?: Source[];
+  /** Assistant only: a note about how files were searched (e.g. semantic search fell back). */
+  notice?: string;
+  /** Assistant only, while preparing: what's happening before the reply starts. */
+  progress?: string;
   stopped?: boolean;
   error?: MessageError;
 }

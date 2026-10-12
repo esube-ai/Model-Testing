@@ -8,6 +8,8 @@ import type { Conversation } from "./conversations";
 export interface ExportContext {
   model: string;
   host: string;
+  /** Files attached to the conversation (names and sizes only, not their contents). */
+  files?: { name: string; size: number; type: string; addedAt: string }[];
 }
 
 export function conversationToJson(c: Conversation, ctx: ExportContext): string {
@@ -19,6 +21,7 @@ export function conversationToJson(c: Conversation, ctx: ExportContext): string 
       updatedAt: c.updatedAt,
       model: ctx.model,
       host: ctx.host,
+      files: ctx.files ?? [],
       chatSettings: {
         systemPrompt: c.settings.systemPrompt,
         temperature: c.settings.temperature,
@@ -35,6 +38,8 @@ export function conversationToJson(c: Conversation, ctx: ExportContext): string 
               host: m.host ?? null,
               stopped: m.stopped ?? false,
               reasoning: m.reasoning ?? null,
+              sources: m.sources ?? [],
+              notice: m.notice ?? null,
               usage: m.metadata?.usage ?? null,
               latencyMs: m.metadata?.latencyMs ?? null,
               error: m.error ? m.error.message : null,
@@ -59,6 +64,7 @@ export function conversationToMarkdown(c: Conversation, ctx: ExportContext): str
     `- System prompt: ${s.systemPrompt ? s.systemPrompt.replace(/\n/g, " ") : "(none)"}`,
     `- Temperature: ${s.temperature ?? "default"}`,
     `- Max tokens: ${s.maxTokens ?? "default"}`,
+    ...(ctx.files?.length ? [`- Attached files: ${ctx.files.map((f) => f.name).join(", ")}`] : []),
     "",
   ];
   for (const m of c.messages) {
@@ -70,6 +76,9 @@ export function conversationToMarkdown(c: Conversation, ctx: ExportContext): str
       if (m.error) lines.push(`> Error: ${m.error.message}`, "");
       else lines.push(m.content, "");
       if (m.stopped) lines.push("_(stopped early)_", "");
+      if (m.sources?.length) {
+        lines.push("Sources:", ...m.sources.map((s) => `- [${s.n}] ${s.docName}${s.page ? `, page ${s.page}` : ""}`), "");
+      }
       if (m.feedback) lines.push(`Feedback: ${m.feedback === "up" ? "👍 thumbs up" : "👎 thumbs down"}`, "");
     }
   }

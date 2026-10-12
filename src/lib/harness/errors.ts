@@ -13,7 +13,8 @@ export type HarnessErrorCode =
   | "response_too_large"
   | "host_not_allowed"
   | "invalid_input"
-  | "cancelled";
+  | "cancelled"
+  | "unsupported";
 
 /** Which connection field is most likely wrong, so the UI can point at it. */
 export type ConnectionField = "baseUrl" | "apiKey" | "format" | "model";
@@ -33,6 +34,7 @@ const USER_MESSAGES: Record<HarnessErrorCode, string> = {
   host_not_allowed: "This app is set up to only allow certain model hosts, and this address isn't one of them.",
   invalid_input: "Some connection details are missing or invalid.",
   cancelled: "Stopped.",
+  unsupported: "This provider doesn't support that feature.",
 };
 
 const FIELDS: Partial<Record<HarnessErrorCode, ConnectionField>> = {

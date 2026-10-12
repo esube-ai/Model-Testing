@@ -15,6 +15,8 @@ import {
 } from "@/lib/client/conversations";
 import { conversationToJson, conversationToMarkdown, download, safeFilename } from "@/lib/client/export";
 import { remove, writeJson } from "@/lib/client/storage";
+import { attachFile, FileError, fileStore, retrieveContext, type RagDoc } from "@/lib/rag";
+import { AttachmentBar, type PendingFile } from "./AttachmentBar";
 import { ChatSettingsPanel } from "./ChatSettingsPanel";
 import { Composer } from "./Composer";
 import { ConnectionDialog } from "./ConnectionDialog";
@@ -59,9 +61,30 @@ export function ChatApp() {
   const abortRef = useRef<AbortController | null>(null);
   const exportRef = useRef<HTMLDetailsElement>(null);
   const threadRef = useRef<HTMLDivElement>(null);
+  // Files attached to the active conversation (stored in IndexedDB, not with conversations).
+  const [files, setFiles] = useState<{ conversationId: string; docs: RagDoc[] }>({ conversationId: "", docs: [] });
+  const [pending, setPending] = useState<PendingFile[]>([]);
+  const [filesPersistent, setFilesPersistent] = useState(true);
+  const [dragging, setDragging] = useState(false);
 
   const active = conversations.find((c) => c.id === activeId) ?? conversations[0];
   const generating = generatingId !== null;
+  const activeFiles = files.conversationId === active?.id ? files.docs : [];
+
+  const activeConvId = active?.id;
+  const latestActive = useRef(activeConvId);
+  // Reload a conversation's file list; ignored if the user has since switched chats.
+  const refreshFiles = useCallback(async (conversationId: string) => {
+    const docs = await fileStore.listDocs(conversationId);
+    if (conversationId === latestActive.current) setFiles({ conversationId, docs });
+  }, []);
+  useEffect(() => {
+    latestActive.current = activeConvId;
+    if (activeConvId) void refreshFiles(activeConvId);
+  }, [activeConvId, refreshFiles]);
+  useEffect(() => {
+    void fileStore.isPersistent().then(setFilesPersistent);
+  }, []);
 
   // Persist conversations (never credentials): immediately when idle, at most once a second
   // while a reply is streaming, and when the page is being closed or reloaded.
@@ -119,6 +142,7 @@ export function ChatApp() {
       .filter((m) => !m.error && (m.role === "user" || m.content))
       .map(({ role, content, reasoning }) => (role === "assistant" && reasoning ? { role, content, reasoning } : { role, content }));
     const s = conv.settings;
+    const question = history.at(-1)?.role === "user" ? history.at(-1)!.content : "";
     const options = {
       system: s.systemPrompt.trim() || undefined,
       temperature: s.temperature ?? undefined,
@@ -126,6 +150,25 @@ export function ChatApp() {
     };
 
     try {
+      // With files attached, send the question together with the most relevant excerpts.
+      if (question) {
+        try {
+          const rag = await retrieveContext(conv.id, question, {
+            connection,
+            embeddingModel: s.embeddingModel,
+            signal: controller.signal,
+            onStatus: (progress) => updateMsg(conv.id, assistant.id, (m) => ({ ...m, progress })),
+          });
+          if (rag) {
+            payload[payload.length - 1] = { role: "user", content: rag.content };
+            updateMsg(conv.id, assistant.id, (m) => ({ ...m, sources: rag.sources, notice: rag.notice }));
+          }
+        } catch (e) {
+          if (controller.signal.aborted) throw e;
+          updateMsg(conv.id, assistant.id, (m) => ({ ...m, notice: "The attached files couldn't be read, so this answer doesn't use them." }));
+        }
+        updateMsg(conv.id, assistant.id, (m) => ({ ...m, progress: undefined }));
+      }
       for await (const ev of streamChatApi(connection, payload, options, controller.signal)) {
         if (ev.type === "text") updateMsg(conv.id, assistant.id, (m) => ({ ...m, content: m.content + ev.text }));
         else if (ev.type === "reasoning") updateMsg(conv.id, assistant.id, (m) => ({ ...m, reasoning: (m.reasoning ?? "") + ev.text }));
@@ -134,13 +177,13 @@ export function ChatApp() {
       setStatus("ok");
     } catch (e) {
       if (controller.signal.aborted) {
-        updateMsg(conv.id, assistant.id, (m) => ({ ...m, stopped: true }));
+        updateMsg(conv.id, assistant.id, (m) => ({ ...m, stopped: true, progress: undefined }));
       } else {
         const error =
           e instanceof ApiError
             ? { code: e.error.code, message: e.error.message, detail: e.error.detail, field: e.error.field }
             : { code: "network" as const, message: "The reply was interrupted. Please try again." };
-        updateMsg(conv.id, assistant.id, (m) => ({ ...m, error }));
+        updateMsg(conv.id, assistant.id, (m) => ({ ...m, error, progress: undefined }));
         setStatus("error");
       }
     } finally {
@@ -188,7 +231,7 @@ export function ChatApp() {
 
   function newChat() {
     setSidebarOpen(false);
-    if (active && active.messages.length === 0) {
+    if (active && active.messages.length === 0 && activeFiles.length === 0) {
       document.getElementById("composer")?.focus();
       return;
     }
@@ -199,6 +242,7 @@ export function ChatApp() {
 
   function deleteConv(id: string) {
     if (generatingId && active?.id === id) stop();
+    void fileStore.deleteConversation(id);
     const rest = conversations.filter((c) => c.id !== id);
     if (rest.length === 0) {
       const c = newConversation();
@@ -210,17 +254,42 @@ export function ChatApp() {
     }
   }
 
+  async function attach(list: File[]) {
+    if (!active) return;
+    const conversationId = active.id;
+    // One at a time, so per-chat limits see the files added just before.
+    for (const file of list) {
+      const id = newId();
+      setPending((p) => [...p, { id, conversationId, name: file.name }]);
+      try {
+        await attachFile(conversationId, file, await fileStore.listDocs(conversationId));
+        setPending((p) => p.filter((x) => x.id !== id));
+        await refreshFiles(conversationId);
+      } catch (e) {
+        const error = e instanceof FileError ? e.message : `“${file.name}” couldn't be read.`;
+        setPending((p) => p.map((x) => (x.id === id ? { ...x, error } : x)));
+      }
+    }
+  }
+
+  async function removeFile(doc: RagDoc) {
+    await fileStore.deleteDoc(doc.id);
+    await refreshFiles(doc.conversationId);
+  }
+
   function updateSettings(settings: ChatSettings) {
     if (active) updateConv(active.id, (c) => ({ ...c, settings }));
   }
 
-  function exportAs(kind: "md" | "json") {
+  async function exportAs(kind: "md" | "json") {
     if (!active) return;
     exportRef.current?.removeAttribute("open");
+    const docs = await fileStore.listDocs(active.id);
     const lastAssistant = [...active.messages].reverse().find((m) => m.role === "assistant");
     const ctx = {
       model: lastAssistant?.model ?? connection?.model ?? "",
       host: lastAssistant?.host ?? (connection ? hostOf(connection.baseUrl) : ""),
+      files: docs.map((d) => ({ name: d.name, size: d.size, type: d.type, addedAt: d.createdAt })),
     };
     const name = safeFilename(active.title);
     if (kind === "json") download(`${name}.json`, conversationToJson(active, ctx), "application/json");
@@ -263,7 +332,28 @@ export function ChatApp() {
         onDelete={deleteConv}
       />
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div
+        className={`relative flex min-w-0 flex-1 flex-col ${dragging ? "ring-4 ring-blue-500 ring-inset" : ""}`}
+        onDragOver={(e) => {
+          if (![...e.dataTransfer.types].includes("Files")) return;
+          e.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
+        }}
+        onDrop={(e) => {
+          if (![...e.dataTransfer.types].includes("Files")) return;
+          e.preventDefault();
+          setDragging(false);
+          void attach([...e.dataTransfer.files]);
+        }}
+      >
+        {dragging && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-blue-50/80 text-lg font-medium text-blue-900 dark:bg-blue-950/80 dark:text-blue-100">
+            Drop files to attach them to this chat
+          </div>
+        )}
         <header className="flex items-center gap-2 border-b border-zinc-200 px-3 py-2 dark:border-zinc-800">
           <button type="button" onClick={() => setSidebarOpen(true)} className="rounded-lg p-2 hover:bg-zinc-100 md:hidden dark:hover:bg-zinc-800" aria-label="Open conversations">
             <MenuIcon />
@@ -347,7 +437,15 @@ export function ChatApp() {
 
         <div className="mx-auto w-full max-w-3xl px-4 pb-4">
           {active && <ChatSettingsPanel key={active.id} settings={active.settings} onChange={updateSettings} />}
-          <Composer generating={generating} disabled={!connection} onSend={send} onStop={stop} />
+          <AttachmentBar
+            files={activeFiles}
+            pending={pending.filter((p) => p.conversationId === active?.id)}
+            persistent={filesPersistent}
+            disabled={generating}
+            onRemove={(doc) => void removeFile(doc)}
+            onDismiss={(id) => setPending((p) => p.filter((x) => x.id !== id))}
+          />
+          <Composer generating={generating} disabled={!connection} onSend={send} onStop={stop} onAttach={(list) => void attach(list)} />
           {!storageAvailable && (
             <p className="mt-2 text-center text-xs text-amber-800 dark:text-amber-300">Your browser is blocking storage: chats and connection will be lost when you reload.</p>
           )}

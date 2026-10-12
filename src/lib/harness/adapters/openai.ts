@@ -83,4 +83,20 @@ export const openaiAdapter: ProviderAdapter = {
   },
 
   parseModels: parseModelList,
+
+  embeddingsBody(model, inputs) {
+    return { model, input: inputs, encoding_format: "float" };
+  },
+
+  parseEmbeddings(json, count) {
+    if (!isObject(json) || !Array.isArray(json.data) || json.data.length !== count) return null;
+    const out: number[][] = new Array(count);
+    for (const [i, item] of json.data.entries()) {
+      if (!isObject(item) || !Array.isArray(item.embedding) || !item.embedding.every((n) => typeof n === "number")) return null;
+      const index = typeof item.index === "number" ? item.index : i;
+      if (index < 0 || index >= count) return null;
+      out[index] = item.embedding as number[];
+    }
+    return out.every(Boolean) ? out : null;
+  },
 };

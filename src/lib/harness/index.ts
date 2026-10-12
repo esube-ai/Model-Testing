@@ -219,3 +219,54 @@ export async function listModels(connectionInput: Connection, options: Pick<Chat
     guard.dispose();
   }
 }
+
+/** Max inputs per embeddings request; larger lists are sent in several batches. */
+export const EMBED_BATCH_SIZE = 32;
+
+/**
+ * Turn texts into embedding vectors with the provider's embeddings endpoint (used for
+ * semantic search over attached files). Only the OpenAI-compatible format offers one;
+ * other formats throw an `unsupported` error. Returns one vector per input, in order.
+ */
+export async function embed(
+  connectionInput: Connection,
+  model: string,
+  inputs: string[],
+  options: Pick<ChatOptions, "signal" | "timeoutMs" | "retryBaseMs"> = {},
+): Promise<number[][]> {
+  const connection = validateConnection(connectionInput);
+  const { apiKey } = connection;
+  const adapter = adapters[connection.format];
+  if (!adapter.embeddingsBody || !adapter.parseEmbeddings) {
+    throw new HarnessError("unsupported", `The ${FORMAT_LABEL[connection.format]} format has no embeddings API.`, {
+      apiKey,
+      message: `The ${FORMAT_LABEL[connection.format]} API doesn't offer embeddings, so semantic search isn't available. Keyword search is used instead.`,
+    });
+  }
+  if (!model.trim()) throw new HarnessError("invalid_input", "Embedding model is empty.", { apiKey, message: "Enter an embedding model name." });
+
+  const vectors: number[][] = [];
+  for (let start = 0; start < inputs.length; start += EMBED_BATCH_SIZE) {
+    const batch = inputs.slice(start, start + EMBED_BATCH_SIZE);
+    const { response, guard } = await fetchWithRetry(
+      buildEndpoint(connection, "embeddings"),
+      { method: "POST", headers: adapter.headers(apiKey), body: JSON.stringify(adapter.embeddingsBody(model.trim(), batch)) },
+      { apiKey, signal: options.signal, timeoutMs: options.timeoutMs ?? 60_000, retryBaseMs: options.retryBaseMs },
+    );
+    try {
+      const text = await readLimited(response, MAX_RESPONSE_BYTES, guard, apiKey);
+      let json: unknown;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        throw new HarnessError("bad_format", `Expected an embeddings response but got: ${text.slice(0, 300)}`, { apiKey });
+      }
+      const parsed = adapter.parseEmbeddings(json, batch.length);
+      if (!parsed) throw new HarnessError("bad_format", `Expected an embeddings response but got: ${text.slice(0, 300)}`, { apiKey });
+      vectors.push(...parsed);
+    } finally {
+      guard.dispose();
+    }
+  }
+  return vectors;
+}

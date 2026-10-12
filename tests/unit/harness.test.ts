@@ -1,8 +1,8 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { HarnessError, listModels, streamChat, testConnection, type ChatEvent, type Connection } from "@/lib/harness";
+import { embed, HarnessError, listModels, streamChat, testConnection, type ChatEvent, type Connection } from "@/lib/harness";
 import { buildEndpoint, isPrivateHost } from "@/lib/harness/security";
 import { redact } from "@/lib/harness/redact";
-import { startMockProvider, VALID_KEY, MOCK_MODELS, type MockProvider } from "../mock/provider";
+import { startMockProvider, VALID_KEY, MOCK_MODELS, mockEmbedding, type MockProvider } from "../mock/provider";
 
 const BAD_KEY = "sk-wrong-key-0000111122223333";
 let mock: MockProvider;
@@ -227,6 +227,34 @@ describe("reasoning models (reasoning_content)", () => {
   it("never sends reasoning fields to the Anthropic format", async () => {
     await collect(streamChat(conn("anthropic"), turn2("some thoughts")));
     expect(sentMessages(0).every((m) => Object.keys(m).sort().join() === "content,role")).toBe(true);
+  });
+});
+
+describe("embeddings", () => {
+  it("returns one vector per input, in order, batching large requests", async () => {
+    const inputs = Array.from({ length: 70 }, (_, i) => `text number ${i}`);
+    const vectors = await embed(conn("openai"), "embed-model", inputs);
+    expect(vectors).toHaveLength(70);
+    expect(vectors[69]).toEqual(mockEmbedding("text number 69"));
+    expect(mock.requests.map((r) => r.path)).toEqual(["/v1/embeddings", "/v1/embeddings", "/v1/embeddings"]);
+    expect(JSON.parse(mock.requests[0].body)).toMatchObject({ model: "embed-model", encoding_format: "float" });
+  });
+
+  it("reports an unknown embedding model", async () => {
+    const err = await expectError(embed(conn("openai"), "missing-embed", ["hi"]));
+    expect(err.code).toBe("model_not_found");
+  });
+
+  it("reports a bad key without leaking it", async () => {
+    const err = await expectError(embed(conn("openai", "mock-model", BAD_KEY), "embed-model", ["hi"]));
+    expect(err.code).toBe("auth");
+  });
+
+  it("is unsupported for the Anthropic format, without sending a request", async () => {
+    const err = await expectError(embed(conn("anthropic"), "embed-model", ["hi"]));
+    expect(err.code).toBe("unsupported");
+    expect(err.message).toMatch(/Keyword search is used instead/);
+    expect(mock.requests).toHaveLength(0);
   });
 });
 
