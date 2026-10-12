@@ -1,5 +1,11 @@
 import { isObject, num, parseModelList, type ProviderAdapter, type StreamDelta } from "./types";
 
+/** Reasoning text, which servers name `reasoning_content` (most) or `reasoning` (some). */
+function reasoningOf(msg: Record<string, unknown>): string | undefined {
+  const r = msg.reasoning_content ?? msg.reasoning;
+  return typeof r === "string" && r ? r : undefined;
+}
+
 /** OpenAI Chat Completions API (and compatible servers). */
 export const openaiAdapter: ProviderAdapter = {
   format: "openai",
@@ -10,12 +16,26 @@ export const openaiAdapter: ProviderAdapter = {
     return h;
   },
 
-  chatBody(model, messages, options, stream) {
-    const msgs = options.system ? [{ role: "system", content: options.system }, ...messages] : messages;
+  chatBody(model, messages, options, stream, replay) {
+    const history = messages.map((m) => {
+      if (m.role !== "assistant" || replay === "never") return { role: m.role, content: m.content };
+      if (replay === "always") return { role: m.role, content: m.content, reasoning_content: m.reasoning ?? "" };
+      return m.reasoning ? { role: m.role, content: m.content, reasoning_content: m.reasoning } : { role: m.role, content: m.content };
+    });
+    const msgs = options.system ? [{ role: "system", content: options.system }, ...history] : history;
     const body: Record<string, unknown> = { model, messages: msgs, stream };
     if (options.temperature !== undefined) body.temperature = options.temperature;
     if (options.maxTokens !== undefined) body.max_tokens = options.maxTokens;
     return body;
+  },
+
+  /**
+   * Reasoning models disagree about `reasoning_content` in requests: some require it on
+   * every earlier assistant message, others reject it. Adjust once based on the error.
+   */
+  replayFallback(errorBody, current) {
+    if (current !== "when-available" || !/reasoning_content/i.test(errorBody)) return null;
+    return /missing|required/i.test(errorBody) ? "always" : "never";
   },
 
   parseResponse(json) {
@@ -27,6 +47,7 @@ export const openaiAdapter: ProviderAdapter = {
     const usage = isObject(json.usage) ? json.usage : {};
     return {
       text: content ?? "",
+      reasoning: reasoningOf(choice.message),
       model: typeof json.model === "string" ? json.model : undefined,
       finishReason: typeof choice.finish_reason === "string" ? choice.finish_reason : undefined,
       usage: { inputTokens: num(usage.prompt_tokens), outputTokens: num(usage.completion_tokens) },
@@ -52,6 +73,7 @@ export const openaiAdapter: ProviderAdapter = {
     const choice = json.choices[0];
     if (isObject(choice)) {
       if (isObject(choice.delta) && typeof choice.delta.content === "string") delta.text = choice.delta.content;
+      if (isObject(choice.delta)) delta.reasoning = reasoningOf(choice.delta);
       if (typeof choice.finish_reason === "string") delta.finishReason = choice.finish_reason;
     }
     if (isObject(json.usage)) {

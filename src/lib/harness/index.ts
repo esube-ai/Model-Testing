@@ -1,6 +1,6 @@
 import { anthropicAdapter } from "./adapters/anthropic";
 import { openaiAdapter } from "./adapters/openai";
-import type { ProviderAdapter } from "./adapters/types";
+import type { ProviderAdapter, ReasoningReplay } from "./adapters/types";
 import { HarnessError, type HarnessErrorJSON } from "./errors";
 import { fetchWithRetry, parseSse, readLimited, type RequestGuard } from "./http";
 import { buildEndpoint, MAX_RESPONSE_BYTES, validateConnection } from "./security";
@@ -39,8 +39,9 @@ function badFormat(adapter: ProviderAdapter, sample: string, apiKey: string, jso
 }
 
 /**
- * Send a chat request and yield normalized events: zero or more `text` chunks followed by
- * exactly one `done` event with usage/metadata. Throws HarnessError on failure.
+ * Send a chat request and yield normalized events: zero or more `text` (reply) and
+ * `reasoning` (model thinking) chunks followed by exactly one `done` event with
+ * usage/metadata. Throws HarnessError on failure.
  */
 export async function* streamChat(
   connectionInput: Connection,
@@ -56,15 +57,39 @@ export async function* streamChat(
   const stream = options.stream ?? true;
   const started = Date.now();
 
-  const { response, guard } = await fetchWithRetry(
-    buildEndpoint(connection, "chat"),
-    {
-      method: "POST",
-      headers: adapter.headers(apiKey),
-      body: JSON.stringify(adapter.chatBody(connection.model, messages, options, stream)),
-    },
-    { apiKey, signal: options.signal, timeoutMs: options.timeoutMs, retryBaseMs: options.retryBaseMs },
-  );
+  const send = (replay: ReasoningReplay) =>
+    fetchWithRetry(
+      buildEndpoint(connection, "chat"),
+      {
+        method: "POST",
+        headers: adapter.headers(apiKey),
+        body: JSON.stringify(adapter.chatBody(connection.model, messages, options, stream, replay)),
+      },
+      { apiKey, signal: options.signal, timeoutMs: options.timeoutMs, retryBaseMs: options.retryBaseMs },
+    );
+
+  let result: Awaited<ReturnType<typeof send>>;
+  try {
+    result = await send("when-available");
+  } catch (e) {
+    // Reasoning models disagree on whether earlier reasoning must be sent back. If the
+    // provider says so, retry once the way it asks.
+    const fallback = e instanceof HarnessError && e.code === "bad_request" ? adapter.replayFallback?.(e.detail, "when-available") : null;
+    if (!fallback) throw e;
+    try {
+      result = await send(fallback);
+    } catch (e2) {
+      if (e2 instanceof HarnessError && e2.code === "bad_request" && /reasoning_content/i.test(e2.detail)) {
+        throw new HarnessError("bad_request", e2.detail, {
+          apiKey,
+          status: e2.status,
+          message: "This model needs the reasoning from earlier replies, which this chat doesn't have. Please start a new chat.",
+        });
+      }
+      throw e2;
+    }
+  }
+  const { response, guard } = result;
 
   const metadata: ChatMetadata = { usage: {}, latencyMs: 0, format: connection.format, model: connection.model };
   try {
@@ -76,6 +101,7 @@ export async function* streamChat(
       metadata.model = parsed.model ?? metadata.model;
       metadata.finishReason = parsed.finishReason;
       metadata.usage = parsed.usage;
+      if (parsed.reasoning) yield { type: "reasoning", text: parsed.reasoning };
       if (parsed.text) yield { type: "text", text: parsed.text };
     }
     metadata.latencyMs = Date.now() - started;
@@ -114,6 +140,7 @@ async function* readStream(
     if (delta.model) metadata.model = delta.model;
     if (delta.finishReason) metadata.finishReason = delta.finishReason;
     metadata.usage = mergeUsage(metadata.usage, delta.usage);
+    if (delta.reasoning) yield { type: "reasoning", text: delta.reasoning };
     if (delta.text) yield { type: "text", text: delta.text };
     if (delta.done) break;
   }

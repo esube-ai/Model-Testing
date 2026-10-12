@@ -37,7 +37,8 @@ export function parseMessages(input: unknown): ChatMessage[] {
     if ((msg.role !== "user" && msg.role !== "assistant") || typeof msg.content !== "string") {
       throw new HarnessError("invalid_input", "Each message needs a role of user/assistant and string content.");
     }
-    return { role: msg.role, content: msg.content };
+    const reasoning = msg.role === "assistant" && typeof msg.reasoning === "string" && msg.reasoning ? msg.reasoning : undefined;
+    return reasoning ? { role: msg.role, content: msg.content, reasoning } : { role: msg.role, content: msg.content };
   });
 }
 

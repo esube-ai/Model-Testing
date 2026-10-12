@@ -40,12 +40,14 @@ function conn(format: "openai" | "anthropic", model = "mock-model", apiKey = VAL
 
 async function collect(gen: AsyncGenerator<ChatEvent>) {
   const chunks: string[] = [];
+  let reasoning = "";
   let done: Extract<ChatEvent, { type: "done" }> | undefined;
   for await (const ev of gen) {
     if (ev.type === "text") chunks.push(ev.text);
+    else if (ev.type === "reasoning") reasoning += ev.text;
     else done = ev;
   }
-  return { chunks, text: chunks.join(""), done };
+  return { chunks, text: chunks.join(""), reasoning, done };
 }
 
 async function expectError(promise: Promise<unknown>): Promise<HarnessError> {
@@ -174,6 +176,57 @@ describe.each(["openai", "anthropic"] as const)("streamChat (%s)", (format) => {
     const bad = await testConnection(conn(format, "mock-model", BAD_KEY));
     expect(bad).toMatchObject({ ok: false, error: { code: "auth", field: "apiKey" } });
     expect(JSON.stringify(bad)).not.toContain(BAD_KEY);
+  });
+});
+
+describe("reasoning models (reasoning_content)", () => {
+  const sentMessages = (i: number) => JSON.parse(mock.requests[i].body).messages as Record<string, unknown>[];
+  const turn2 = (reasoning?: string) => [
+    { role: "user" as const, content: "first" },
+    { role: "assistant" as const, content: "Hello! You said: first", ...(reasoning !== undefined ? { reasoning } : {}) },
+    { role: "user" as const, content: "second" },
+  ];
+
+  it("streams the reasoning separately from the reply", async () => {
+    const { text, reasoning } = await collect(streamChat(conn("openai", "reasoning-model"), msgs));
+    expect(reasoning).toBe("Thinking about: hi there. ");
+    expect(text).toBe("Hello! You said: hi there");
+    // The first turn has no earlier assistant messages, so nothing extra is sent.
+    expect(sentMessages(0).some((m) => "reasoning_content" in m)).toBe(false);
+  });
+
+  it("returns reasoning from non-streaming replies", async () => {
+    const { text, reasoning } = await collect(streamChat(conn("openai", "reasoning-model"), msgs, { stream: false }));
+    expect(reasoning).toBe("Thinking about: hi there. ");
+    expect(text).toBe("Hello! You said: hi there");
+  });
+
+  it("sends earlier reasoning back on the next turn", async () => {
+    const { text } = await collect(streamChat(conn("openai", "reasoning-model"), turn2("Thinking about: first. ")));
+    expect(text).toBe("Hello! You said: second");
+    expect(mock.requests).toHaveLength(1);
+    expect(sentMessages(0)[1]).toEqual({ role: "assistant", content: "Hello! You said: first", reasoning_content: "Thinking about: first. " });
+    expect(sentMessages(0)[0]).toEqual({ role: "user", content: "first" });
+  });
+
+  it("retries with empty reasoning when an older message has none saved", async () => {
+    const { text } = await collect(streamChat(conn("openai", "reasoning-model"), turn2()));
+    expect(text).toBe("Hello! You said: second");
+    expect(mock.requests).toHaveLength(2);
+    expect(sentMessages(1)[1].reasoning_content).toBe("");
+  });
+
+  it("retries without reasoning when the provider rejects the field", async () => {
+    const { text } = await collect(streamChat(conn("openai", "strict-reasoner"), turn2("Thinking about: first. ")));
+    expect(text).toBe("Hello! You said: second");
+    expect(mock.requests).toHaveLength(2);
+    expect(sentMessages(0)[1].reasoning_content).toBe("Thinking about: first. ");
+    expect(sentMessages(1).some((m) => "reasoning_content" in m)).toBe(false);
+  });
+
+  it("never sends reasoning fields to the Anthropic format", async () => {
+    await collect(streamChat(conn("anthropic"), turn2("some thoughts")));
+    expect(sentMessages(0).every((m) => Object.keys(m).sort().join() === "content,role")).toBe(true);
   });
 });
 

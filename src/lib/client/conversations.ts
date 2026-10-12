@@ -28,6 +28,8 @@ export interface Message {
   model?: string;
   host?: string;
   metadata?: ChatMetadata;
+  /** Assistant only: the model's reasoning ("thinking"), when it returns any. */
+  reasoning?: string;
   stopped?: boolean;
   error?: MessageError;
 }
