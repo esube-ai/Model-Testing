@@ -34,6 +34,7 @@ export function conversationToJson(c: Conversation, ctx: ExportContext): string 
               model: m.model ?? null,
               host: m.host ?? null,
               stopped: m.stopped ?? false,
+              reasoning: m.reasoning ?? null,
               usage: m.metadata?.usage ?? null,
               latencyMs: m.metadata?.latencyMs ?? null,
               error: m.error ? m.error.message : null,

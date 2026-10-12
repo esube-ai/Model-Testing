@@ -139,6 +139,7 @@ The app has no login. Anyone with the link can open it, although they still need
 | "The model took too long to respond" | Try again. If it keeps happening, try a shorter message or a smaller **Max tokens**. |
 | "This app only allows these model hosts" | The person running the app set `ALLOWED_API_HOSTS`. Ask them to add your provider. On Vercel: project → **Settings → Environment Variables**, then redeploy. |
 | "This app is running online, so it can't reach local or private-network addresses" | You're using the hosted version with a model on your own computer or office network. Use the provider's public address, or run the app locally with `npm run dev`. |
+| "This model needs the reasoning from earlier replies, which this chat doesn't have" | The chat was started before the app saved reasoning, or the reply was stopped early. Start a **New chat**. |
 | "Your browser is blocking storage" | Private browsing or strict privacy settings are on. The app still works, but chats and the connection are lost when you reload. |
 
 ---
@@ -176,5 +177,10 @@ These follow the public OpenAI and Anthropic documentation. Providers that diffe
 - **Max tokens.** OpenAI-compatible requests send `max_tokens`, and only when you set it. Some newer OpenAI models expect `max_completion_tokens` instead; leave Max tokens blank for those. Anthropic requires `max_tokens`, so 4096 is used when it's blank.
 - **Usage.** Token counts for OpenAI-compatible streams are shown only if the provider includes `usage` in the stream. `stream_options` is not sent, because some compatible servers reject unknown fields.
 - **Connection test.** It sends "Reply with the single word: OK". For Anthropic it caps the reply at 8 tokens. For OpenAI-compatible it sends no cap, because some models reject `max_tokens`.
+- **Reasoning models.** Reasoning (`reasoning_content`, or `reasoning` on some servers) is read from OpenAI-compatible replies, shown under a collapsible "Reasoning" heading and saved with the message. On later turns it is sent back as `reasoning_content` on earlier assistant messages, because some reasoning models require it. Providers disagree here, so if the provider rejects the request:
+  - if the error says `reasoning_content` is missing or required, the app retries once, sending it on every earlier assistant message (empty where none was saved);
+  - otherwise, if the error mentions `reasoning_content`, it retries once without it.
+
+  Anthropic requests never include it.
 - **Error mapping.** 401/403 → bad key. 404 → model not found if the error mentions "model", otherwise wrong URL. 429 → rate limit. 5xx → provider trouble. A reply that doesn't match the selected format → wrong API format.
 - **Rendering.** GitHub-flavoured Markdown (`remark-gfm`), LaTeX math (`remark-math` + KaTeX, `$…$` and `$$…$$` delimiters), raw HTML (`rehype-raw`, then `rehype-sanitize` with GitHub's allow-list), Mermaid diagrams (loaded on demand, `securityLevel: "strict"`), and SVG shown via `<img>` data URLs. Images are allowed from `http(s)` and `data:image/(png|jpeg|gif|webp|avif|svg+xml)` only. `package.json` overrides nested `katex` copies to the patched 0.19 release.

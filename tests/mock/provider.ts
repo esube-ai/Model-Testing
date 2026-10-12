@@ -11,6 +11,9 @@
  *   slow           waits 3s before responding
  *   wrong-shape    200 with the *other* format's response body
  *   html           200 with an HTML page
+ *   reasoning-model   (OpenAI format) returns `reasoning_content` and, like some reasoning
+ *                     models, rejects requests whose earlier assistant messages lack it
+ *   strict-reasoner   (OpenAI format) returns `reasoning_content` but rejects it in requests
  * A last user message containing "long story" streams many slow chunks (for Stop tests),
  * and one containing "rich demo" replies with every supported content type (RICH_DEMO).
  * Paths prefixed with /nomodels have no model-list endpoint.
@@ -75,7 +78,7 @@ export interface MockProvider {
 interface Body {
   model?: string;
   stream?: boolean;
-  messages?: { role: string; content: string }[];
+  messages?: { role: string; content: string; reasoning_content?: unknown }[];
 }
 
 export async function startMockProvider(port = 0): Promise<MockProvider> {
@@ -143,6 +146,16 @@ export async function startMockProvider(port = 0): Promise<MockProvider> {
       return error(429, "rate_limit_error", "Rate limit reached");
     }
     if (model === "slow") await sleep(3000);
+    const isReasoner = !isAnthropic && (model === "reasoning-model" || model === "strict-reasoner");
+    if (!isAnthropic && model === "reasoning-model") {
+      const idx = body.messages?.findIndex((m) => m.role === "assistant" && typeof m.reasoning_content !== "string") ?? -1;
+      if (idx !== -1) {
+        return json(400, { error: { code: "missing_required_parameter", message: `Missing required parameter: 'messages[${idx}].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message.`, param: `messages[${idx}].reasoning_content`, type: "invalid_request_error" } });
+      }
+    }
+    if (!isAnthropic && model === "strict-reasoner" && body.messages?.some((m) => "reasoning_content" in m)) {
+      return json(400, { error: { message: "Unrecognized request argument supplied: reasoning_content", type: "invalid_request_error", param: null, code: null } });
+    }
     if (model === "html") {
       res.writeHead(200, { "content-type": "text/html" });
       return res.end("<html><body>Welcome to my website</body></html>");
@@ -156,11 +169,12 @@ export async function startMockProvider(port = 0): Promise<MockProvider> {
         ? RICH_DEMO
         : `Hello! You said: ${last}`;
     const asAnthropic = model === "wrong-shape" ? !isAnthropic : isAnthropic;
+    const reasoning = isReasoner ? `Thinking about: ${last}. ` : "";
 
     if (!body.stream || model === "wrong-shape") {
       return json(200, asAnthropic
         ? { id: "msg_1", type: "message", role: "assistant", model, content: [{ type: "text", text: reply }], stop_reason: "end_turn", usage: { input_tokens: 5, output_tokens: 7 } }
-        : { id: "chatcmpl-1", object: "chat.completion", model, choices: [{ index: 0, message: { role: "assistant", content: reply }, finish_reason: "stop" }], usage: { prompt_tokens: 5, completion_tokens: 7 } });
+        : { id: "chatcmpl-1", object: "chat.completion", model, choices: [{ index: 0, message: { role: "assistant", content: reply, ...(reasoning ? { reasoning_content: reasoning } : {}) }, finish_reason: "stop" }], usage: { prompt_tokens: 5, completion_tokens: 7 } });
     }
 
     res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
@@ -184,6 +198,10 @@ export async function startMockProvider(port = 0): Promise<MockProvider> {
       send({ type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: chunks.length } }, "message_delta");
       send({ type: "message_stop" }, "message_stop");
     } else {
+      for (const r of reasoning.match(/\S+\s*/g) ?? []) {
+        send({ id: "chatcmpl-1", object: "chat.completion.chunk", model, choices: [{ index: 0, delta: { reasoning_content: r }, finish_reason: null }] });
+        await sleep(delay);
+      }
       for (const c of chunks) {
         if (res.destroyed) return;
         send({ id: "chatcmpl-1", object: "chat.completion.chunk", model, choices: [{ index: 0, delta: { content: c }, finish_reason: null }] });

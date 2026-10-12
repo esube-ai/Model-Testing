@@ -11,6 +11,8 @@ export interface Connection {
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  /** Assistant only: the model's reasoning, if it returned any. Some models require it back. */
+  reasoning?: string;
 }
 
 export interface ChatOptions {
@@ -40,4 +42,8 @@ export interface ChatMetadata {
   format: ApiFormat;
 }
 
-export type ChatEvent = { type: "text"; text: string } | { type: "done"; metadata: ChatMetadata };
+export type ChatEvent =
+  | { type: "text"; text: string }
+  /** The model's reasoning ("thinking"), streamed separately from the reply. */
+  | { type: "reasoning"; text: string }
+  | { type: "done"; metadata: ChatMetadata };

@@ -238,6 +238,33 @@ test("renders rich output: tables, math, diagrams, SVG, images, HTML — and blo
   expect(cspViolations).toEqual([]);
 });
 
+test("reasoning models: shows reasoning and keeps working on later turns", async ({ page }) => {
+  await page.goto("/");
+  await fillConnection(page, { model: "reasoning-model" });
+  await dialog(page).getByRole("button", { name: "Test connection" }).click();
+  await expect(dialog(page).getByText("Connected!")).toBeVisible();
+  await dialog(page).getByRole("button", { name: "Save", exact: true }).click();
+
+  await sendMessage(page, "first question");
+  await expect(page.getByTestId("assistant-message").last()).toContainText("You said: first question");
+  await expect(page.getByRole("button", { name: "Stop" })).toBeHidden();
+  const reasoning = page.getByTestId("reasoning").last();
+  await reasoning.getByText("Reasoning").click();
+  await expect(reasoning).toContainText("Thinking about: first question.");
+
+  // The second turn is the one that failed before: the provider requires the earlier reasoning.
+  await sendMessage(page, "second question");
+  await expect(page.getByTestId("assistant-message").last()).toContainText("You said: second question");
+  await expect(page.getByTestId("error-message")).toHaveCount(0);
+
+  // Reasoning survives a reload, so the third turn still works.
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Stop" })).toBeHidden();
+  await sendMessage(page, "third question");
+  await expect(page.getByTestId("assistant-message").last()).toContainText("You said: third question");
+  await expect(page.getByTestId("error-message")).toHaveCount(0);
+});
+
 test("sends security headers", async ({ request }) => {
   const res = await request.get("/");
   const h = res.headers();

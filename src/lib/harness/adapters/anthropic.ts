@@ -38,7 +38,7 @@ export const anthropicAdapter: ProviderAdapter = {
   chatBody(model, messages, options, stream) {
     const body: Record<string, unknown> = {
       model,
-      messages,
+      messages: messages.map(({ role, content }) => ({ role, content })),
       max_tokens: options.maxTokens ?? ANTHROPIC_DEFAULT_MAX_TOKENS,
       stream,
     };

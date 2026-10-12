@@ -113,6 +113,14 @@ export function MessageItem({ message, streaming, busy, canRegenerate, canEdit, 
 
   return (
     <div className="group" data-testid="assistant-message">
+      {message.reasoning && (
+        <details className="mb-3 rounded-lg border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-700" data-testid="reasoning">
+          <summary className="cursor-pointer text-zinc-600 select-none dark:text-zinc-400">
+            {streaming && !message.content ? "Thinking…" : "Reasoning"}
+          </summary>
+          <p className="mt-2 whitespace-pre-wrap break-words text-zinc-600 dark:text-zinc-400">{message.reasoning}</p>
+        </details>
+      )}
       {message.content ? (
         <Markdown text={message.content} streaming={streaming} />
       ) : streaming ? (

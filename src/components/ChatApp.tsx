@@ -114,7 +114,10 @@ export function ChatApp() {
     const controller = new AbortController();
     abortRef.current = controller;
     setGeneratingId(assistant.id);
-    const payload = history.filter((m) => !m.error && (m.role === "user" || m.content)).map(({ role, content }) => ({ role, content }));
+    // Earlier reasoning is sent back too: some reasoning models require it on every turn.
+    const payload = history
+      .filter((m) => !m.error && (m.role === "user" || m.content))
+      .map(({ role, content, reasoning }) => (role === "assistant" && reasoning ? { role, content, reasoning } : { role, content }));
     const s = conv.settings;
     const options = {
       system: s.systemPrompt.trim() || undefined,
@@ -125,6 +128,7 @@ export function ChatApp() {
     try {
       for await (const ev of streamChatApi(connection, payload, options, controller.signal)) {
         if (ev.type === "text") updateMsg(conv.id, assistant.id, (m) => ({ ...m, content: m.content + ev.text }));
+        else if (ev.type === "reasoning") updateMsg(conv.id, assistant.id, (m) => ({ ...m, reasoning: (m.reasoning ?? "") + ev.text }));
         else updateMsg(conv.id, assistant.id, (m) => ({ ...m, metadata: ev.metadata, model: ev.metadata.model ?? m.model }));
       }
       setStatus("ok");
