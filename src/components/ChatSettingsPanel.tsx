@@ -81,6 +81,24 @@ export function ChatSettingsPanel({ settings, onChange }: Props) {
             />
             <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">The longest reply allowed (roughly ¾ of a word per token). Blank uses the default.</p>
           </div>
+          <div className="sm:col-span-2">
+            <label htmlFor={`${id}-embed`} className="block text-sm font-medium">
+              Semantic search model (optional)
+            </label>
+            <input
+              id={`${id}-embed`}
+              type="text"
+              autoComplete="off"
+              spellCheck={false}
+              value={settings.embeddingModel ?? ""}
+              placeholder="e.g. text-embedding-3-small"
+              onChange={(e) => onChange({ ...settings, embeddingModel: e.target.value })}
+              className={inputClass}
+            />
+            <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+              For attached files. Blank uses keyword search. Enter your provider&apos;s embedding model to also match by meaning (OpenAI-compatible providers only).
+            </p>
+          </div>
         </div>
       )}
     </div>

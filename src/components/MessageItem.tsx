@@ -124,11 +124,36 @@ export function MessageItem({ message, streaming, busy, canRegenerate, canEdit, 
       {message.content ? (
         <Markdown text={message.content} streaming={streaming} />
       ) : streaming ? (
-        <p className="text-zinc-500 dark:text-zinc-400" aria-label="Waiting for reply">
-          <span className="inline-block animate-pulse">●●●</span>
-        </p>
+        message.progress ? (
+          <p className="animate-pulse text-sm text-zinc-600 dark:text-zinc-400" role="status">
+            {message.progress}
+          </p>
+        ) : (
+          <p className="text-zinc-500 dark:text-zinc-400" aria-label="Waiting for reply">
+            <span className="inline-block animate-pulse">●●●</span>
+          </p>
+        )
       ) : null}
       {message.stopped && <p className="mt-2 text-xs text-zinc-600 italic dark:text-zinc-400">Stopped early.</p>}
+      {message.notice && <p className="mt-2 text-xs text-amber-800 dark:text-amber-300">{message.notice}</p>}
+      {message.sources && message.sources.length > 0 && (
+        <details className="mt-3 rounded-lg border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-700" data-testid="sources">
+          <summary className="cursor-pointer text-zinc-600 select-none dark:text-zinc-400">
+            Sources from your files ({message.sources.length})
+          </summary>
+          <ol className="mt-2 space-y-2">
+            {message.sources.map((s) => (
+              <li key={s.n}>
+                <p className="font-medium">
+                  [{s.n}] {s.docName}
+                  {s.page ? `, page ${s.page}` : ""}
+                </p>
+                <p className="mt-0.5 whitespace-pre-wrap break-words text-zinc-600 dark:text-zinc-400">{s.excerpt}</p>
+              </li>
+            ))}
+          </ol>
+        </details>
+      )}
       {!streaming && (
         <div className="mt-1 flex items-center gap-1">
           <CopyButton text={message.content} label="Copy message" />

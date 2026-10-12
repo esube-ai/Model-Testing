@@ -20,7 +20,7 @@ export const ALLOWED_HOSTS_WARNING =
   "Set ALLOWED_API_HOSTS (comma-separated) for shared deployments.";
 
 /** Known endpoint suffixes users sometimes paste as part of the base URL. */
-const ENDPOINT_SUFFIXES = /\/(chat\/completions|messages|models)\/?$/i;
+const ENDPOINT_SUFFIXES = /\/(chat\/completions|messages|models|embeddings)\/?$/i;
 
 /**
  * Validate a user-supplied base URL and return a normalized form (no trailing slash,
@@ -89,12 +89,13 @@ export function isPrivateHost(hostname: string): boolean {
   return false;
 }
 
-export type Endpoint = "chat" | "models";
+export type Endpoint = "chat" | "models" | "embeddings";
 
 /**
  * Build the provider URL for one of the fixed endpoints. These are the only paths the
  * server ever forwards to.
- *  - OpenAI-compatible: {base}/chat/completions, {base}/models  (base usually ends in /v1)
+ *  - OpenAI-compatible: {base}/chat/completions, {base}/models, {base}/embeddings
+ *    (base usually ends in /v1)
  *  - Anthropic:         {base}/v1/messages, {base}/v1/models     (/v1 added if missing)
  */
 export function buildEndpoint(connection: Pick<Connection, "baseUrl" | "format">, endpoint: Endpoint): string {
@@ -112,6 +113,7 @@ export function buildEndpoint(connection: Pick<Connection, "baseUrl" | "format">
 
 function endpointSuffix(format: ApiFormat, endpoint: Endpoint): string {
   if (endpoint === "models") return "/models";
+  if (endpoint === "embeddings") return "/embeddings";
   return format === "anthropic" ? "/messages" : "/chat/completions";
 }
 
