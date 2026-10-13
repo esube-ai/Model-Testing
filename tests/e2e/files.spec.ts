@@ -1,25 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
-import { VALID_KEY } from "../mock/provider";
 import { filler, makeDocx, makePdf } from "../fixtures/files";
+import { ask, connect as connectHelper } from "./helpers";
 
-const MOCK_URL = "http://127.0.0.1:4011";
-
-async function connect(page: Page) {
-  await page.goto("/");
-  const d = page.getByRole("dialog", { name: "Connection" });
-  await d.getByLabel("API base URL").fill(`${MOCK_URL}/v1`);
-  await d.getByLabel("API key", { exact: true }).fill(VALID_KEY);
-  await d.getByLabel("Model name").fill("mock-model");
-  await d.getByRole("button", { name: "Save anyway" }).click();
-  await expect(d).toBeHidden();
-}
-
-async function ask(page: Page, text: string) {
-  await page.getByLabel("Message", { exact: true }).fill(text);
-  await page.getByLabel("Message", { exact: true }).press("Enter");
-  await expect(page.getByRole("button", { name: "Stop" })).toBeHidden({ timeout: 20_000 });
-  return page.getByTestId("assistant-message").last();
-}
+const connect = (page: Page) => connectHelper(page, { test: false });
 
 async function attach(page: Page, files: { name: string; mimeType: string; buffer: Buffer }[]) {
   await page.getByTestId("file-input").setInputFiles(files);
@@ -82,12 +65,16 @@ test("semantic search finds text with different wording, and falls back when it 
   const keyword = await ask(page, "car upkeep?");
   await expect(keyword).not.toContainText("5000 km");
 
-  await page.getByRole("button", { name: "Chat settings" }).click();
-  await page.getByLabel("Semantic search model (optional)").fill("embed-model");
+  const setEmbedding = async (model: string) => {
+    await page.getByRole("button", { name: "Chat settings" }).click();
+    await page.getByLabel("Semantic search model (optional)").fill(model);
+    await page.getByRole("button", { name: "Close Chat settings" }).click();
+  };
+  await setEmbedding("embed-model");
   const semantic = await ask(page, "car upkeep?");
   await expect(semantic).toContainText("5000 km");
 
-  await page.getByLabel("Semantic search model (optional)").fill("missing-embed");
+  await setEmbedding("missing-embed");
   const fallback = await ask(page, "car upkeep?");
   await expect(fallback).toContainText("Semantic search didn't work");
   await expect(fallback).toContainText("keyword search was used");
@@ -95,9 +82,9 @@ test("semantic search finds text with different wording, and falls back when it 
 
 test("files persist, can be removed, reject unsupported types, and go away with the chat", async ({ page }) => {
   await connect(page);
-  await attach(page, [txt("keep.md", "# Keep\n\nKeep this."), txt("drop.txt", "Drop this."), { name: "photo.png", mimeType: "image/png", buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47]) }]);
+  await attach(page, [txt("keep.md", "# Keep\n\nKeep this."), txt("drop.txt", "Drop this."), { name: "archive.zip", mimeType: "application/zip", buffer: Buffer.from([0x50, 0x4b, 3, 4]) }]);
   await expect(page.getByTestId("attachment")).toHaveCount(2);
-  await expect(page.getByRole("alert").filter({ hasText: "photo.png" })).toContainText("isn't a supported file type");
+  await expect(page.getByRole("alert").filter({ hasText: "archive.zip" })).toContainText("isn't a supported file type");
 
   await page.getByRole("button", { name: "Remove drop.txt" }).click();
   await expect(page.getByTestId("attachment")).toHaveCount(1);
@@ -113,7 +100,8 @@ test("files persist, can be removed, reject unsupported types, and go away with 
   await expect(page.getByTestId("attachment")).toHaveCount(1);
 
   page.once("dialog", (d) => void d.accept());
-  await page.getByRole("button", { name: 'Delete "New chat"' }).last().click();
+  await page.getByRole("button", { name: 'More options for "New chat"' }).last().click();
+  await page.getByRole("menuitem", { name: "Delete" }).click();
   const remaining = await page.evaluate(
     () =>
       new Promise<number>((resolve) => {

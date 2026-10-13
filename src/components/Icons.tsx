@@ -104,3 +104,104 @@ export const FileIcon = () => (
     <path d="M14 2v6h6" />
   </Icon>
 );
+export const CameraIcon = () => (
+  <Icon>
+    <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+    <circle cx="12" cy="13" r="3" />
+  </Icon>
+);
+export const MicIcon = () => (
+  <Icon>
+    <rect x="9" y="2" width="6" height="12" rx="3" />
+    <path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4" />
+  </Icon>
+);
+export const SearchIcon = () => (
+  <Icon>
+    <circle cx="11" cy="11" r="7" />
+    <path d="m20 20-3.5-3.5" />
+  </Icon>
+);
+export const ChevronDownIcon = () => (
+  <Icon width="14" height="14">
+    <path d="m6 9 6 6 6-6" />
+  </Icon>
+);
+export const ChevronRightIcon = () => (
+  <Icon width="14" height="14">
+    <path d="m9 6 6 6-6 6" />
+  </Icon>
+);
+export const ColumnsIcon = () => (
+  <Icon>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <path d="M9 4v16M15 4v16" />
+  </Icon>
+);
+export const FolderIcon = () => (
+  <Icon>
+    <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+  </Icon>
+);
+export const PinIcon = () => (
+  <Icon>
+    <path d="M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" />
+  </Icon>
+);
+export const MoreIcon = () => (
+  <Icon>
+    <circle cx="5" cy="12" r="1" fill="currentColor" />
+    <circle cx="12" cy="12" r="1" fill="currentColor" />
+    <circle cx="19" cy="12" r="1" fill="currentColor" />
+  </Icon>
+);
+export const ArrowUpIcon = () => (
+  <Icon strokeWidth={2.5}>
+    <path d="M12 19V5M5 12l7-7 7 7" />
+  </Icon>
+);
+export const PanelLeftIcon = () => (
+  <Icon>
+    <rect x="3" y="3" width="18" height="18" rx="2" />
+    <path d="M9 3v18" />
+  </Icon>
+);
+export const KeyboardIcon = () => (
+  <Icon>
+    <rect x="2" y="5" width="20" height="14" rx="2" />
+    <path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M18 13h.01M8 17h8M10 13h4" />
+  </Icon>
+);
+export const BookIcon = () => (
+  <Icon>
+    <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" />
+  </Icon>
+);
+export const SlidersIcon = () => (
+  <Icon>
+    <path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6" />
+  </Icon>
+);
+export const EditSquareIcon = () => (
+  <Icon>
+    <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+    <path d="M18.4 2.6a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4Z" />
+  </Icon>
+);
+export const SwitchCameraIcon = () => (
+  <Icon>
+    <path d="M11 19H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5M13 5h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-5" />
+    <circle cx="12" cy="12" r="3" />
+    <path d="m18 22-3-3 3-3M6 2l3 3-3 3" />
+  </Icon>
+);
+
+/** The app's own logo mark: three ascending bars ("testing and comparing models"). */
+export const LogoMark = ({ size = 24 }: { size?: number }) => (
+  <svg viewBox="0 0 32 32" width={size} height={size} aria-hidden="true" focusable="false">
+    <rect width="32" height="32" rx="8" fill="var(--accent)" />
+    <rect x="8" y="17" width="4" height="7" rx="1.5" fill="var(--accent-ink)" />
+    <rect x="14" y="12" width="4" height="12" rx="1.5" fill="var(--accent-ink)" />
+    <rect x="20" y="7" width="4" height="17" rx="1.5" fill="var(--accent-ink)" />
+  </svg>
+);

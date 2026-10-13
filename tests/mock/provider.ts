@@ -14,6 +14,8 @@
  *   reasoning-model   (OpenAI format) returns `reasoning_content` and, like some reasoning
  *                     models, rejects requests whose earlier assistant messages lack it
  *   strict-reasoner   (OpenAI format) returns `reasoning_content` but rejects it in requests
+ *   text-only         rejects any request that contains images
+ * Replies mention how many images the last user message contained ("[I see 1 image]").
  * A last user message containing "long story" streams many slow chunks (for Stop tests),
  * and one containing "rich demo" replies with every supported content type (RICH_DEMO).
  * Paths prefixed with /nomodels have no model-list endpoint.
@@ -97,10 +99,25 @@ export function mockEmbedding(text: string): number[] {
   return vec.map((v) => v / norm);
 }
 
+interface Part {
+  type: string;
+  text?: string;
+}
+
+/** Text and image count of a message in either format (string or content parts). */
+function readContent(content: string | Part[] | undefined): { text: string; images: number } {
+  if (typeof content === "string") return { text: content, images: 0 };
+  const parts = content ?? [];
+  return {
+    text: parts.filter((p) => p.type === "text").map((p) => p.text ?? "").join(""),
+    images: parts.filter((p) => p.type === "image" || p.type === "image_url").length,
+  };
+}
+
 interface Body {
   model?: string;
   stream?: boolean;
-  messages?: { role: string; content: string; reasoning_content?: unknown }[];
+  messages?: { role: string; content: string | Part[]; reasoning_content?: unknown }[];
 }
 
 export async function startMockProvider(port = 0): Promise<MockProvider> {
@@ -196,7 +213,11 @@ export async function startMockProvider(port = 0): Promise<MockProvider> {
       return res.end("<html><body>Welcome to my website</body></html>");
     }
 
-    const last = body.messages?.filter((m) => m.role === "user").at(-1)?.content ?? "";
+    if (model === "text-only" && body.messages?.some((m) => readContent(m.content).images > 0)) {
+      return error(400, "invalid_request_error", "This model does not support image input.");
+    }
+    const lastUser = readContent(body.messages?.filter((m) => m.role === "user").at(-1)?.content);
+    const last = lastUser.images ? `${lastUser.text} [I see ${lastUser.images} image${lastUser.images === 1 ? "" : "s"}]` : lastUser.text;
     const long = last.includes("long story");
     const reply = long
       ? Array.from({ length: 200 }, (_, i) => `word${i} `).join("")

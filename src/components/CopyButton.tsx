@@ -37,7 +37,7 @@ export function CopyButton({ text, label, showText = false }: { text: string; la
       }}
       aria-label={copied ? "Copied" : label}
       title={label}
-      className="inline-flex items-center gap-1 rounded-md p-1.5 text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900 focus-visible:ring-2 focus-visible:ring-blue-500 focus:outline-none dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+      className="inline-flex items-center gap-1 rounded-md p-1.5 text-muted hover:bg-raised hover:text-ink focus-visible:ring-2 focus-visible:ring-accent focus:outline-none"
     >
       {copied ? <CheckIcon /> : <CopyIcon />}
       {showText && <span>{copied ? "Copied" : "Copy"}</span>}

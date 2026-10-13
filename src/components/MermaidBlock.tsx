@@ -36,8 +36,8 @@ export function MermaidBlock({ code, streaming }: { code: string; streaming: boo
   const ready = result && result.code === code;
   if (streaming || !ready || !result.svg) {
     return (
-      <div className="overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900">
-        <div className="border-b border-zinc-200 px-3 py-1 text-xs text-zinc-600 dark:border-zinc-700 dark:text-zinc-400">
+      <div className="overflow-hidden rounded-lg border border-line bg-raised font-sans">
+        <div className="border-b border-line px-3 py-1 text-xs text-muted">
           {ready && !result.svg ? "mermaid — couldn't draw this diagram, showing its code" : "mermaid diagram"}
         </div>
         <pre className="overflow-x-auto p-3 text-sm">

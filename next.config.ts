@@ -34,7 +34,8 @@ const nextConfig: NextConfig = {
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "X-Frame-Options", value: "DENY" },
           { key: "Referrer-Policy", value: "no-referrer" },
-          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+          // Camera (photos) and microphone (dictation) for this app only; nothing else.
+          { key: "Permissions-Policy", value: "camera=(self), microphone=(self), geolocation=()" },
         ],
       },
     ];
