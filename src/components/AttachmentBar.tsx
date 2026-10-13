@@ -34,14 +34,14 @@ export function AttachmentBar({ files, pending, persistent, disabled, onRemove, 
         {files.map((f) => (
           <li
             key={f.id}
-            className="flex max-w-full items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 py-1 pr-1 pl-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+            className="flex max-w-full items-center gap-2 rounded-lg border border-line bg-raised py-1 pr-1 pl-2 text-sm"
             data-testid="attachment"
           >
             <FileIcon />
             <span className="min-w-0 truncate font-medium" title={f.name}>
               {f.name}
             </span>
-            <span className="shrink-0 text-xs text-zinc-600 dark:text-zinc-400">
+            <span className="shrink-0 text-xs text-muted">
               {formatSize(f.size)} · {f.chunkCount} {f.chunkCount === 1 ? "section" : "sections"}
             </span>
             <button
@@ -50,7 +50,7 @@ export function AttachmentBar({ files, pending, persistent, disabled, onRemove, 
               disabled={disabled}
               aria-label={`Remove ${f.name}`}
               title="Remove"
-              className="rounded-md p-1 text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900 focus-visible:ring-2 focus-visible:ring-blue-500 focus:outline-none disabled:opacity-40 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+              className="rounded-md p-1 text-muted hover:bg-raised hover:text-ink focus-visible:ring-2 focus-visible:ring-accent focus:outline-none disabled:opacity-40"
             >
               <CloseIcon />
             </button>
@@ -74,7 +74,7 @@ export function AttachmentBar({ files, pending, persistent, disabled, onRemove, 
               </button>
             </li>
           ) : (
-            <li key={p.id} className="flex max-w-full items-center gap-2 rounded-lg border border-dashed border-zinc-300 px-2 py-1 text-sm text-zinc-600 dark:border-zinc-600 dark:text-zinc-400" role="status">
+            <li key={p.id} className="flex max-w-full items-center gap-2 rounded-lg border border-dashed border-line px-2 py-1 text-sm text-muted" role="status">
               <FileIcon />
               <span className="min-w-0 truncate">{p.name}</span>
               <span className="shrink-0 animate-pulse text-xs">Reading…</span>
@@ -83,7 +83,7 @@ export function AttachmentBar({ files, pending, persistent, disabled, onRemove, 
         )}
       </ul>
       {files.length > 0 && (
-        <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+        <p className="mt-1 text-xs text-muted">
           Your questions in this chat will be answered using these files.
           {!persistent && " Your browser is blocking storage, so they'll be gone when you reload."}
         </p>

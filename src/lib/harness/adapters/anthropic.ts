@@ -38,7 +38,13 @@ export const anthropicAdapter: ProviderAdapter = {
   chatBody(model, messages, options, stream) {
     const body: Record<string, unknown> = {
       model,
-      messages: messages.map(({ role, content }) => ({ role, content })),
+      messages: messages.map(({ role, content, images }) => {
+        if (role !== "user" || !images?.length) return { role, content };
+        // Images first, then the text, as Anthropic recommends. Empty text blocks aren't allowed.
+        const parts: unknown[] = images.map((img) => ({ type: "image", source: { type: "base64", media_type: img.mime, data: img.data } }));
+        if (content) parts.push({ type: "text", text: content });
+        return { role, content: parts };
+      }),
       max_tokens: options.maxTokens ?? ANTHROPIC_DEFAULT_MAX_TOKENS,
       stream,
     };

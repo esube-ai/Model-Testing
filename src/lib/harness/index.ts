@@ -70,24 +70,17 @@ export async function* streamChat(
 
   let result: Awaited<ReturnType<typeof send>>;
   try {
-    result = await send("when-available");
+    result = await sendWithReplay();
   } catch (e) {
-    // Reasoning models disagree on whether earlier reasoning must be sent back. If the
-    // provider says so, retry once the way it asks.
-    const fallback = e instanceof HarnessError && e.code === "bad_request" ? adapter.replayFallback?.(e.detail, "when-available") : null;
-    if (!fallback) throw e;
-    try {
-      result = await send(fallback);
-    } catch (e2) {
-      if (e2 instanceof HarnessError && e2.code === "bad_request" && /reasoning_content/i.test(e2.detail)) {
-        throw new HarnessError("bad_request", e2.detail, {
-          apiKey,
-          status: e2.status,
-          message: "This model needs the reasoning from earlier replies, which this chat doesn't have. Please start a new chat.",
-        });
-      }
-      throw e2;
+    // A rejected request that contained pictures most likely means the model can't see images.
+    if (e instanceof HarnessError && e.code === "bad_request" && messages.some((m) => m.images?.length)) {
+      throw new HarnessError("bad_request", e.detail, {
+        apiKey,
+        status: e.status,
+        message: "The model rejected this request. It may not accept images: try a vision-capable model, or send it without the picture.",
+      });
     }
+    throw e;
   }
   const { response, guard } = result;
 
@@ -110,6 +103,30 @@ export async function* streamChat(
     // Covers the consumer stopping early (e.g. user pressed Stop): abort the upstream request.
     guard.abort("cancelled");
     guard.dispose();
+  }
+
+  /** Send, retrying once with a different reasoning replay mode if the provider asks for it. */
+  async function sendWithReplay(): Promise<Awaited<ReturnType<typeof send>>> {
+    try {
+      return await send("when-available");
+    } catch (e) {
+      // Reasoning models disagree on whether earlier reasoning must be sent back. If the
+      // provider says so, retry once the way it asks.
+      const fallback = e instanceof HarnessError && e.code === "bad_request" ? adapter.replayFallback?.(e.detail, "when-available") : null;
+      if (!fallback) throw e;
+      try {
+        return await send(fallback);
+      } catch (e2) {
+        if (e2 instanceof HarnessError && e2.code === "bad_request" && /reasoning_content/i.test(e2.detail)) {
+          throw new HarnessError("bad_request", e2.detail, {
+            apiKey,
+            status: e2.status,
+            message: "This model needs the reasoning from earlier replies, which this chat doesn't have. Please start a new chat.",
+          });
+        }
+        throw e2;
+      }
+    }
   }
 }
 

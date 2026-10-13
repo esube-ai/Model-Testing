@@ -1,6 +1,6 @@
 import type { Connection } from "@/lib/harness/types";
 import { ApiError, embedApi } from "@/lib/client/api";
-import { hostOf } from "@/lib/client/connection";
+import { hostOf } from "@/lib/client/connections";
 import { newId } from "@/lib/client/conversations";
 import { chunkSegments } from "./chunk";
 import { extractSegments, FileError } from "./extract";
@@ -70,13 +70,14 @@ interface RetrieveOptions {
 }
 
 /**
- * Find the parts of a conversation's files that are relevant to `question` and build the
- * message to send. Returns null when the conversation has no files.
+ * Find the parts of the files in `scopes` (a chat and, if it's in one, its project) that
+ * are relevant to `question` and build the message to send. Returns null when there are
+ * no files.
  */
-export async function retrieveContext(conversationId: string, question: string, options: RetrieveOptions): Promise<RetrievalResult | null> {
-  const docs = await fileStore.listDocs(conversationId);
+export async function retrieveContext(scopes: string[], question: string, options: RetrieveOptions): Promise<RetrievalResult | null> {
+  const docs = (await Promise.all(scopes.map((s) => fileStore.listDocs(s)))).flat();
   if (docs.length === 0) return null;
-  const chunks = await fileStore.listChunks(conversationId);
+  const chunks = (await Promise.all(scopes.map((s) => fileStore.listChunks(s)))).flat();
   const total = chunks.reduce((n, c) => n + c.text.length, 0);
   const embeddingModel = options.embeddingModel?.trim();
   let notice: string | undefined;

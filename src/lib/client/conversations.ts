@@ -1,6 +1,10 @@
-import type { ChatMetadata, ConnectionField, HarnessErrorCode } from "@/lib/harness";
+import type { ChatMetadata, ConnectionField, HarnessErrorCode, ImageMime } from "@/lib/harness";
 import type { Source } from "@/lib/rag/types";
+import type { ModelRef } from "./connections";
+import { newId } from "./ids";
 import { readJson, writeJson } from "./storage";
+
+export { newId } from "./ids";
 
 export const CONVERSATIONS_KEY = "model-testing.conversations";
 
@@ -21,13 +25,29 @@ export interface MessageError {
   field?: ConnectionField;
 }
 
+/** A picture attached to a user message. The image itself is stored in IndexedDB. */
+export interface ImageRef {
+  id: string;
+  mime: ImageMime;
+  name: string;
+  width: number;
+  height: number;
+}
+
 export interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
   createdAt: string;
+  /** User only: pictures sent with the message. */
+  images?: ImageRef[];
+  /** Assistant only: the user message this replies to (several replies per turn in Compare). */
+  turnId?: string;
+  /** Assistant only: which connection and model wrote the reply. */
+  modelRef?: ModelRef;
   /** Assistant only. */
   feedback?: "up" | "down" | null;
+  /** Display name of the model and host (kept even if the connection is later removed). */
   model?: string;
   host?: string;
   metadata?: ChatMetadata;
@@ -50,19 +70,15 @@ export interface Conversation {
   updatedAt: string;
   settings: ChatSettings;
   messages: Message[];
+  /** Models selected in the picker; more than one means Compare mode. */
+  models?: ModelRef[];
+  pinned?: boolean;
+  projectId?: string;
 }
 
-export function newId(): string {
-  try {
-    return crypto.randomUUID();
-  } catch {
-    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-  }
-}
-
-export function newConversation(settings: ChatSettings = DEFAULT_SETTINGS): Conversation {
+export function newConversation(settings: ChatSettings = DEFAULT_SETTINGS, extra: Partial<Conversation> = {}): Conversation {
   const now = new Date().toISOString();
-  return { id: newId(), title: "New chat", createdAt: now, updatedAt: now, settings: { ...settings }, messages: [] };
+  return { id: newId(), title: "New chat", createdAt: now, updatedAt: now, settings: { ...settings }, messages: [], ...extra };
 }
 
 export function loadConversations(): Conversation[] {

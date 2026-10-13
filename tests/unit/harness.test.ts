@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { embed, HarnessError, listModels, streamChat, testConnection, type ChatEvent, type Connection } from "@/lib/harness";
 import { buildEndpoint, isPrivateHost } from "@/lib/harness/security";
+import { parseMessages } from "@/lib/server/api";
 import { redact } from "@/lib/harness/redact";
 import { startMockProvider, VALID_KEY, MOCK_MODELS, mockEmbedding, type MockProvider } from "../mock/provider";
 
@@ -227,6 +228,53 @@ describe("reasoning models (reasoning_content)", () => {
   it("never sends reasoning fields to the Anthropic format", async () => {
     await collect(streamChat(conn("anthropic"), turn2("some thoughts")));
     expect(sentMessages(0).every((m) => Object.keys(m).sort().join() === "content,role")).toBe(true);
+  });
+});
+
+describe("images (vision)", () => {
+  // A 1x1 PNG.
+  const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+  const withImage = [{ role: "user" as const, content: "What is this?", images: [{ mime: "image/png" as const, data: PNG }] }];
+
+  it("sends images as OpenAI content parts", async () => {
+    const { text } = await collect(streamChat(conn("openai"), withImage));
+    expect(text).toBe("Hello! You said: What is this? [I see 1 image]");
+    const sent = JSON.parse(mock.requests[0].body).messages[0];
+    expect(sent.content).toEqual([
+      { type: "image_url", image_url: { url: `data:image/png;base64,${PNG}` } },
+      { type: "text", text: "What is this?" },
+    ]);
+  });
+
+  it("sends images as Anthropic image blocks", async () => {
+    const { text } = await collect(streamChat(conn("anthropic"), withImage));
+    expect(text).toBe("Hello! You said: What is this? [I see 1 image]");
+    const sent = JSON.parse(mock.requests[0].body).messages[0];
+    expect(sent.content).toEqual([
+      { type: "image", source: { type: "base64", media_type: "image/png", data: PNG } },
+      { type: "text", text: "What is this?" },
+    ]);
+  });
+
+  it("sends an image-only message without an empty text part", async () => {
+    await collect(streamChat(conn("anthropic"), [{ role: "user", content: "", images: withImage[0].images }]));
+    expect(JSON.parse(mock.requests[0].body).messages[0].content).toHaveLength(1);
+  });
+
+  it("explains when a model rejects images", async () => {
+    const err = await expectError(collect(streamChat(conn("openai", "text-only"), withImage)));
+    expect(err.code).toBe("bad_request");
+    expect(err.message).toMatch(/may not accept images/);
+  });
+
+  it("validates images on the server", () => {
+    expect(parseMessages(withImage)[0].images).toHaveLength(1);
+    const bad = (images: unknown) => () => parseMessages([{ role: "user", content: "x", images }]);
+    expect(bad([{ mime: "image/svg+xml", data: PNG }])).toThrow(HarnessError);
+    expect(bad([{ mime: "image/png", data: "not base64!" }])).toThrow(HarnessError);
+    expect(bad(Array.from({ length: 5 }, () => ({ mime: "image/png", data: PNG })))).toThrow(/at most 4/);
+    // Images on assistant messages are ignored.
+    expect(parseMessages([{ role: "assistant", content: "x", images: withImage[0].images }])[0]).toEqual({ role: "assistant", content: "x" });
   });
 });
 

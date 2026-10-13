@@ -17,6 +17,8 @@ export default defineConfig({
     launchOptions: {
       // Optional: use a preinstalled Chromium instead of `npx playwright install chromium`.
       executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined,
+      // A fake camera (test pattern) that is allowed without a permission prompt.
+      args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"],
     },
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],

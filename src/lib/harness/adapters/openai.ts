@@ -18,6 +18,11 @@ export const openaiAdapter: ProviderAdapter = {
 
   chatBody(model, messages, options, stream, replay) {
     const history = messages.map((m) => {
+      if (m.role === "user" && m.images?.length) {
+        const parts: unknown[] = m.images.map((img) => ({ type: "image_url", image_url: { url: `data:${img.mime};base64,${img.data}` } }));
+        if (m.content) parts.push({ type: "text", text: m.content });
+        return { role: m.role, content: parts };
+      }
       if (m.role !== "assistant" || replay === "never") return { role: m.role, content: m.content };
       if (replay === "always") return { role: m.role, content: m.content, reasoning_content: m.reasoning ?? "" };
       return m.reasoning ? { role: m.role, content: m.content, reasoning_content: m.reasoning } : { role: m.role, content: m.content };

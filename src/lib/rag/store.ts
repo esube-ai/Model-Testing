@@ -6,7 +6,15 @@ import type { RagChunk, RagDoc } from "./types";
  * used instead, so files work until the page is reloaded.
  */
 const DB_NAME = "model-testing-files";
-const DB_VERSION = 1;
+/** v1: docs, chunks. v2: images (pictures attached to messages). */
+const DB_VERSION = 2;
+
+/** A picture attached to a message, stored as a Blob. */
+export interface StoredImage {
+  id: string;
+  conversationId: string;
+  blob: Blob;
+}
 
 interface Backend {
   docs(conversationId: string): Promise<RagDoc[]>;
@@ -15,6 +23,8 @@ interface Backend {
   deleteDoc(docId: string): Promise<void>;
   deleteConversation(conversationId: string): Promise<void>;
   putChunks(chunks: RagChunk[]): Promise<void>;
+  putImage(image: StoredImage): Promise<void>;
+  getImage(id: string): Promise<StoredImage | undefined>;
   persistent: boolean;
 }
 
@@ -36,12 +46,17 @@ function done(tx: IDBTransaction): Promise<void> {
 async function openIndexedDb(): Promise<Backend> {
   const db = await new Promise<IDBDatabase>((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
+    req.onupgradeneeded = (event) => {
       const d = req.result;
-      d.createObjectStore("docs", { keyPath: "id" }).createIndex("conversationId", "conversationId");
-      const chunks = d.createObjectStore("chunks", { keyPath: "id" });
-      chunks.createIndex("conversationId", "conversationId");
-      chunks.createIndex("docId", "docId");
+      if (event.oldVersion < 1) {
+        d.createObjectStore("docs", { keyPath: "id" }).createIndex("conversationId", "conversationId");
+        const chunks = d.createObjectStore("chunks", { keyPath: "id" });
+        chunks.createIndex("conversationId", "conversationId");
+        chunks.createIndex("docId", "docId");
+      }
+      if (event.oldVersion < 2) {
+        d.createObjectStore("images", { keyPath: "id" }).createIndex("conversationId", "conversationId");
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -76,11 +91,18 @@ async function openIndexedDb(): Promise<Backend> {
       await done(tx);
     },
     async deleteConversation(id) {
-      const tx = db.transaction(["docs", "chunks"], "readwrite");
+      const tx = db.transaction(["docs", "chunks", "images"], "readwrite");
       await deleteByIndex(tx, "docs", "conversationId", id);
       await deleteByIndex(tx, "chunks", "conversationId", id);
+      await deleteByIndex(tx, "images", "conversationId", id);
       await done(tx);
     },
+    async putImage(image) {
+      const tx = db.transaction("images", "readwrite");
+      tx.objectStore("images").put(image);
+      await done(tx);
+    },
+    getImage: (id) => request(db.transaction("images").objectStore("images").get(id) as IDBRequest<StoredImage | undefined>),
     async putChunks(chunks) {
       const tx = db.transaction("chunks", "readwrite");
       const os = tx.objectStore("chunks");
@@ -93,6 +115,7 @@ async function openIndexedDb(): Promise<Backend> {
 function memoryBackend(): Backend {
   const docs = new Map<string, RagDoc>();
   const chunks = new Map<string, RagChunk>();
+  const images = new Map<string, StoredImage>();
   return {
     persistent: false,
     docs: async (id) => [...docs.values()].filter((d) => d.conversationId === id),
@@ -108,7 +131,12 @@ function memoryBackend(): Backend {
     async deleteConversation(id) {
       for (const [k, d] of docs) if (d.conversationId === id) docs.delete(k);
       for (const [k, c] of chunks) if (c.conversationId === id) chunks.delete(k);
+      for (const [k, img] of images) if (img.conversationId === id) images.delete(k);
     },
+    async putImage(image) {
+      images.set(image.id, image);
+    },
+    getImage: async (id) => images.get(id),
     async putChunks(list) {
       list.forEach((c) => chunks.set(c.id, c));
     },
@@ -140,4 +168,6 @@ export const fileStore = {
   deleteDoc: async (docId: string) => (await getBackend()).deleteDoc(docId),
   deleteConversation: async (conversationId: string) => (await getBackend()).deleteConversation(conversationId),
   saveChunks: async (chunks: RagChunk[]) => (await getBackend()).putChunks(chunks),
+  putImage: async (image: StoredImage) => (await getBackend()).putImage(image),
+  getImage: async (id: string) => (await getBackend()).getImage(id),
 };

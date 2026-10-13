@@ -8,9 +8,20 @@ export interface Connection {
   model: string;
 }
 
+export const IMAGE_MIME_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"] as const;
+export type ImageMime = (typeof IMAGE_MIME_TYPES)[number];
+
+/** A picture sent with a user message (for vision models). `data` is base64, no data: prefix. */
+export interface ImagePart {
+  mime: ImageMime;
+  data: string;
+}
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  /** User only: pictures sent with the message. */
+  images?: ImagePart[];
   /** Assistant only: the model's reasoning, if it returned any. Some models require it back. */
   reasoning?: string;
 }

@@ -84,8 +84,8 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
   }, [code, language]);
 
   return (
-    <div className="overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900">
-      <div className="flex items-center justify-between border-b border-zinc-200 px-3 py-1 text-xs text-zinc-600 dark:border-zinc-700 dark:text-zinc-400">
+    <div className="overflow-hidden rounded-lg border border-line bg-raised font-sans">
+      <div className="flex items-center justify-between border-b border-line px-3 py-1 text-xs text-muted">
         <span>{language || "code"}</span>
         <CopyButton text={code} label="Copy code" showText />
       </div>
@@ -110,7 +110,7 @@ function SvgBlock({ code, streaming }: { code: string; streaming: boolean }) {
 function SafeImage({ src, alt, title }: { src?: unknown; alt?: string; title?: string }) {
   const [failed, setFailed] = useState(false);
   if (typeof src !== "string" || !isSafeImageSrc(src) || failed) {
-    return <span className="text-sm text-zinc-600 italic dark:text-zinc-400">[image{alt ? `: ${alt}` : ""}{failed ? " — couldn't load" : ""}]</span>;
+    return <span className="text-sm text-muted italic">[image{alt ? `: ${alt}` : ""}{failed ? " — couldn't load" : ""}]</span>;
   }
   return (
     // Images can come from any web address the model writes, so next/image isn't usable here.
