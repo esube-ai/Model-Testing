@@ -31,6 +31,7 @@ export function useDetailTile(
 ): DetailTile | null {
   const [tile, setTile] = useState<Tile | null>(null);
   const requestSeq = useRef(0);
+  const shown = useRef<Tile | null>(null);
   const dpr = typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1;
   const wanted = !!meta && !!surface && viewport.width > 0 && needsDetail(view, surface, dpr);
 
@@ -51,7 +52,10 @@ export function useDetailTile(
             res.bitmap.close();
             return;
           }
-          setTile({ ...res.rect, bitmap: res.bitmap, regions });
+          // Release the bitmap this one replaces (not in an effect cleanup, which StrictMode replays).
+          shown.current?.bitmap.close();
+          shown.current = { ...res.rect, bitmap: res.bitmap, regions };
+          setTile(shown.current);
         })
         .catch(() => {
           // The preview is still shown; a failed detail render is not fatal.
@@ -60,8 +64,6 @@ export function useDetailTile(
     return () => clearTimeout(timer);
   }, [wanted, client, meta, view, viewport, regions, dpr]);
 
-  // Release the previous bitmap when it is replaced.
-  useEffect(() => () => tile?.bitmap.close(), [tile]);
 
   // A tile is only valid for the exact regions it was rendered with.
   return wanted && tile && tile.regions === regions ? tile : null;

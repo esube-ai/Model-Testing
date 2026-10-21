@@ -22,4 +22,9 @@ export default tseslint.config(
       'jsx-a11y/no-noninteractive-tabindex': ['error', { tags: [], roles: ['tabpanel', 'application'] }],
     },
   },
+  {
+    // Tests may report measurements; the app itself must never log (no-console above).
+    files: ['tests/**/*.ts'],
+    rules: { 'no-console': 'off' },
+  },
 );

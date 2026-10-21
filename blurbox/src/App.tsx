@@ -91,7 +91,8 @@ export function App() {
   useEffect(() => {
     renderer?.update(liveRegions);
   }, [renderer, liveRegions]);
-  useEffect(() => () => renderer?.dispose(), [renderer]);
+  // The previous image's renderer is disposed when a new image replaces it (see openFile).
+  const docRef = useRef<Doc | null>(null);
 
   const detail = useDetailTile(workerClient, doc?.meta ?? null, doc?.surface ?? null, view, viewport, liveRegions);
 
@@ -139,7 +140,9 @@ export function App() {
           (e) => setError(`Preview failed: ${e.message}`),
           setPreviewBusy,
         );
-        setDoc({ meta: res.meta, surface, renderer });
+        docRef.current?.renderer.dispose();
+        docRef.current = { meta: res.meta, surface, renderer };
+        setDoc(docRef.current);
         if (res.meta.downscaled) {
           setNotice(
             `This image (${res.meta.sourceWidth} × ${res.meta.sourceHeight}) is larger than this device can process, ` +
