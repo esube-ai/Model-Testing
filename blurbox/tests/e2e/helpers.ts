@@ -105,3 +105,45 @@ export async function sampleCanvasAt(page: Page, fx: number, fy: number): Promis
     return [p[0], p[1], p[2]] as [number, number, number];
   }, { fx, fy });
 }
+
+/** Converts image-pixel coordinates to page coordinates using the current view transform. */
+export async function imageToPage(page: Page, ix: number, iy: number): Promise<{ x: number; y: number }> {
+  return page.getByTestId('preview-canvas').evaluate(
+    (c: HTMLCanvasElement, { ix, iy }) => {
+      const r = c.getBoundingClientRect();
+      return {
+        x: r.left + Number(c.dataset.viewTx) + ix * Number(c.dataset.viewScale),
+        y: r.top + Number(c.dataset.viewTy) + iy * Number(c.dataset.viewScale),
+      };
+    },
+    { ix, iy },
+  );
+}
+
+/** Drags with the mouse between two image-pixel points. */
+export async function dragImage(page: Page, from: [number, number], to: [number, number] | [number, number][]): Promise<void> {
+  const a = await imageToPage(page, from[0], from[1]);
+  await page.mouse.move(a.x, a.y);
+  await page.mouse.down();
+  const path = (Array.isArray(to[0]) ? to : [to]) as [number, number][];
+  for (const pt of path) {
+    const b = await imageToPage(page, pt[0], pt[1]);
+    await page.mouse.move(b.x, b.y, { steps: 6 });
+  }
+  await page.mouse.up();
+}
+
+export async function selectTool(page: Page, name: 'Select' | 'Rectangle' | 'Ellipse' | 'Brush' | 'Pan'): Promise<void> {
+  await page.getByRole('radio', { name }).check();
+}
+
+/** Region shapes as rendered in the overlay, converted back to image pixels. */
+export async function overlayRegions(page: Page) {
+  return page.getByTestId('region-overlay').evaluate((svg) =>
+    [...svg.querySelectorAll('g[data-region-id]')].map((g) => ({
+      id: g.getAttribute('data-region-id')!,
+      shape: g.getAttribute('data-shape')!,
+      selected: g.getAttribute('data-selected') === 'true',
+    })),
+  );
+}

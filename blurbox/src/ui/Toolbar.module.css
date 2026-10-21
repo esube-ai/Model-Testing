@@ -1,0 +1,83 @@
+.toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+.tools {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.tool {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 64px;
+  min-height: 52px;
+  padding: 4px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  border: 1px solid transparent;
+}
+
+.tool:hover { background: var(--panel-2); color: var(--text); }
+
+.tool[data-active='true'] {
+  background: var(--accent-strong);
+  color: var(--on-accent);
+}
+
+/* The native radio stays in the accessibility tree and tab order; the label is the visual button. */
+.radio {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.tool:has(.radio:focus-visible) {
+  outline: 3px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.brushSize {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.brushSize input { width: 64px; }
+
+@media (max-width: 719px) {
+  .toolbar {
+    flex-direction: row;
+    align-items: center;
+    border-right: 0;
+    border-top: 1px solid var(--border);
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 4px 8px;
+  }
+  .tools { flex-direction: row; }
+  .tool { min-width: 56px; min-height: 48px; }
+  .brushSize { flex-direction: row; white-space: nowrap; }
+  .brushSize input { width: 110px; }
+}

@@ -1,7 +1,33 @@
 .app {
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-columns: auto minmax(0, 1fr) 300px;
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas:
+    'header header header'
+    'tools stage panel';
   height: 100%;
+}
+
+.app[data-has-image='false'] {
+  grid-template-areas:
+    'header header header'
+    'stage stage stage';
+}
+
+.app > header { grid-area: header; }
+.app > main { grid-area: stage; }
+.app > div:first-of-type { grid-area: tools; }
+.app > section { grid-area: panel; }
+
+@media (max-width: 719px) {
+  .app {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
+    grid-template-areas: 'header' 'stage' 'tools' 'panel';
+  }
+  .app[data-has-image='false'] {
+    grid-template-areas: 'header' 'stage' 'stage' 'stage';
+  }
 }
 
 .header {

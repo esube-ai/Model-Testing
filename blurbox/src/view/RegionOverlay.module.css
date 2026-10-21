@@ -1,0 +1,43 @@
+.overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.outlineDark,
+.outlineLight,
+.outlineSelected {
+  fill: none;
+  vector-effect: non-scaling-stroke;
+}
+
+.outlineDark { stroke: rgb(0 0 0 / 0.75); stroke-width: 3; }
+.outlineLight { stroke: #fff; stroke-width: 1.5; stroke-dasharray: 6 4; }
+.outlineSelected { stroke: var(--accent); stroke-width: 2; }
+
+/* Brush strokes are drawn as the stroke itself (its width is the brush size). */
+path.brush { stroke-linecap: round; stroke-linejoin: round; vector-effect: none; }
+path.outlineDark.brush { stroke: rgb(0 0 0 / 0.18); }
+path.outlineLight.brush { stroke: rgb(255 255 255 / 0.22); stroke-dasharray: none; }
+path.outlineSelected.brush { stroke: rgb(110 168 255 / 0.35); }
+
+.bounds {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.handle {
+  fill: #fff;
+  stroke: var(--accent-strong);
+  stroke-width: 2;
+}
+
+.brushCursor {
+  fill: rgb(255 255 255 / 0.12);
+  stroke: #fff;
+  stroke-width: 1.5;
+  filter: drop-shadow(0 0 1px #000);
+}
