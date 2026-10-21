@@ -12,6 +12,8 @@ import { RegionOverlay } from './view/RegionOverlay';
 import { PreviewRenderer } from './view/previewRenderer';
 import { useDetailTile } from './view/useDetailTile';
 import { CompareButton } from './ui/CompareButton';
+import { HistoryControls } from './ui/HistoryControls';
+import { canRedo, canUndo } from './model/history';
 import { createSurface, type PreviewSurface } from './view/surface';
 import { useRegionTool, withDraft } from './view/useRegionTool';
 import { actualSizeView, fitView, nextZoomStep, zoomTo, type Size, type View } from './view/viewTransform';
@@ -169,6 +171,19 @@ export function App() {
     [regions, announce],
   );
 
+  const undo = useCallback(() => {
+    if (!canUndo(editor.history)) return;
+    regionTool.handler.cancel();
+    dispatch({ type: 'undo' });
+    announce('Undone.');
+  }, [editor.history, regionTool.handler, announce]);
+  const redo = useCallback(() => {
+    if (!canRedo(editor.history)) return;
+    regionTool.handler.cancel();
+    dispatch({ type: 'redo' });
+    announce('Redone.');
+  }, [editor.history, regionTool.handler, announce]);
+
   // Announce newly added regions.
   const prevCount = useRef(0);
   useEffect(() => {
@@ -181,11 +196,27 @@ export function App() {
 
   useEffect(() => {
     const isTyping = (t: EventTarget | null) =>
-      t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName));
+      t instanceof HTMLElement &&
+      (t.isContentEditable ||
+        t.tagName === 'TEXTAREA' ||
+        t.tagName === 'SELECT' ||
+        (t instanceof HTMLInputElement && !['range', 'radio', 'checkbox', 'color', 'button'].includes(t.type)));
     const down = (e: KeyboardEvent) => {
       if (e.code === 'Space' && !isTyping(e.target) && !(e.target instanceof HTMLButtonElement)) {
         e.preventDefault();
         setSpaceHeld(true);
+      }
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && !e.altKey && (e.key === 'z' || e.key === 'Z') && !isTyping(e.target)) {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+        return;
+      }
+      if (mod && !e.altKey && (e.key === 'y' || e.key === 'Y') && !isTyping(e.target)) {
+        e.preventDefault();
+        redo();
+        return;
       }
       if (e.key === '\\' && !isTyping(e.target)) {
         e.preventDefault();
@@ -212,7 +243,7 @@ export function App() {
       window.removeEventListener('keyup', up);
       window.removeEventListener('blur', blur);
     };
-  }, [editor.selectedId, deleteRegion]);
+  }, [editor.selectedId, deleteRegion, undo, redo]);
 
   const panMode = spaceHeld || tool === 'pan';
   const cursor = panMode ? 'grab' : (regionTool.hover?.cursor ?? (tool === 'select' ? 'default' : 'crosshair'));
@@ -247,6 +278,14 @@ export function App() {
             onZoomOut={() => zoomStep(-1)}
             onFit={fit}
             onActualSize={actualSize}
+          />
+        )}
+        {doc && (
+          <HistoryControls
+            canUndo={canUndo(editor.history)}
+            canRedo={canRedo(editor.history)}
+            onUndo={undo}
+            onRedo={redo}
           />
         )}
         {doc && <CompareButton active={showOriginal} onChange={setCompareHeld} />}
