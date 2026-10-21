@@ -1,8 +1,10 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ImageMeta } from './model/types';
 import { maxPixelsForDevice, PREVIEW_MAX_PIXELS } from './processing/limits';
 import { ACCEPT_ATTR, useImageInput } from './ui/useImageInput';
 import { CanvasView } from './view/CanvasView';
+import { ZoomControls } from './ui/ZoomControls';
+import { actualSizeView, fitView, nextZoomStep, zoomTo, type Size, type View } from './view/viewTransform';
 import { createSurface, type PreviewSurface } from './view/surface';
 import { workerClient } from './worker/instance';
 import styles from './App.module.css';
@@ -21,6 +23,50 @@ export function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [announcement, setAnnouncement] = useState('');
+  const [view, setView] = useState<View>({ scale: 1, tx: 0, ty: 0 });
+  const [viewport, setViewport] = useState<Size>({ width: 0, height: 0 });
+  const [spaceHeld, setSpaceHeld] = useState(false);
+  const needsFit = useRef(false);
+
+  useEffect(() => {
+    if (doc && needsFit.current && viewport.width > 0 && viewport.height > 0) {
+      needsFit.current = false;
+      setView(fitView(viewport, doc.meta));
+    }
+  }, [doc, viewport]);
+
+  const zoomStep = useCallback(
+    (dir: 1 | -1) => {
+      if (!doc) return;
+      setView((v) => zoomTo(v, nextZoomStep(v.scale, dir), viewport.width / 2, viewport.height / 2, viewport, doc.meta));
+    },
+    [doc, viewport],
+  );
+  const fit = useCallback(() => doc && setView(fitView(viewport, doc.meta)), [doc, viewport]);
+  const actualSize = useCallback(() => doc && setView((v) => actualSizeView(v, viewport, doc.meta)), [doc, viewport]);
+
+  useEffect(() => {
+    const isTyping = (t: EventTarget | null) =>
+      t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName));
+    const down = (e: KeyboardEvent) => {
+      if (e.code === 'Space' && !isTyping(e.target) && !(e.target instanceof HTMLButtonElement)) {
+        e.preventDefault();
+        setSpaceHeld(true);
+      }
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.code === 'Space') setSpaceHeld(false);
+    };
+    const blur = () => setSpaceHeld(false);
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    window.addEventListener('blur', blur);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+      window.removeEventListener('blur', blur);
+    };
+  }, []);
 
   const openFile = useCallback(async (file: File) => {
     setLoading(true);
@@ -34,6 +80,7 @@ export function App() {
         maxPixels: MAX_PIXELS,
         previewMaxPixels: PREVIEW_MAX_PIXELS,
       });
+      needsFit.current = true;
       setDoc({ meta: res.meta, surface: createSurface(res.preview, res.previewScale) });
       if (res.meta.downscaled) {
         setNotice(
@@ -73,6 +120,15 @@ export function App() {
             {doc.meta.name} · {doc.meta.width} × {doc.meta.height}
           </p>
         )}
+        {doc && (
+          <ZoomControls
+            scale={view.scale}
+            onZoomIn={() => zoomStep(1)}
+            onZoomOut={() => zoomStep(-1)}
+            onFit={fit}
+            onActualSize={actualSize}
+          />
+        )}
       </header>
 
       <main className={styles.stage}>
@@ -87,7 +143,21 @@ export function App() {
           </p>
         )}
         {doc ? (
-          <CanvasView meta={doc.meta} surface={doc.surface} />
+          <CanvasView
+            meta={doc.meta}
+            surface={doc.surface}
+            surfaceVersion={doc.surface.version}
+            detail={null}
+            showOriginal={false}
+            view={view}
+            onViewChange={setView}
+            viewport={viewport}
+            onViewportSize={setViewport}
+            panMode={spaceHeld}
+            cursor={spaceHeld ? 'grab' : 'default'}
+            tool={null}
+            label={`Image ${doc.meta.name}`}
+          />
         ) : (
           <div className={styles.empty}>
             <h2>Hide parts of an image</h2>

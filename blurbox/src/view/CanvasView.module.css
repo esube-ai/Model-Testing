@@ -6,6 +6,14 @@
   background:
     repeating-conic-gradient(#1a1d23 0% 25%, #22262e 0% 50%) 50% / 24px 24px;
   touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.container:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: -3px;
 }
 
 .canvas {

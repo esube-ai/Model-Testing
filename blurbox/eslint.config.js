@@ -18,6 +18,8 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       ...jsxA11y.flatConfigs.strict.rules,
       'no-console': 'error',
+      // The image canvas is a focusable role="application" widget with its own keyboard model.
+      'jsx-a11y/no-noninteractive-tabindex': ['error', { tags: [], roles: ['tabpanel', 'application'] }],
     },
   },
 );
