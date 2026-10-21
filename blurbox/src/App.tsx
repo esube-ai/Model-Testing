@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { defaultBrushSize, defaultSettings, rangesFor, type RegionSettings } from './model/defaults';
-import { editorReducer, initialEditorState } from './model/editor';
+import { defaultBrushSize, defaultSettings, makeRegion, rangesFor, type RegionSettings } from './model/defaults';
+import { editorReducer, initialEditorState, newRegionId } from './model/editor';
 import type { ExportFormat, ImageMeta, Tool } from './model/types';
 import { maxPixelsForDevice, PREVIEW_MAX_PIXELS } from './processing/limits';
 import { RegionPanel, regionName } from './ui/RegionPanel';
@@ -15,9 +15,12 @@ import { CompareButton } from './ui/CompareButton';
 import { HistoryControls } from './ui/HistoryControls';
 import { ExportDialog, EXTENSIONS } from './ui/ExportDialog';
 import { canRedo, canUndo } from './model/history';
+import { fitShapeToBox, intersectsImage, moveShape, shapeBounds } from './model/geometry';
+import { useShortcuts } from './ui/useShortcuts';
+import { HelpDialog } from './ui/HelpDialog';
 import { createSurface, type PreviewSurface } from './view/surface';
 import { useRegionTool, withDraft } from './view/useRegionTool';
-import { actualSizeView, fitView, nextZoomStep, zoomTo, type Size, type View } from './view/viewTransform';
+import { actualSizeView, fitView, nextZoomStep, screenToImage, zoomTo, type Size, type View } from './view/viewTransform';
 import { workerClient } from './worker/instance';
 import styles from './App.module.css';
 
@@ -225,56 +228,78 @@ export function App() {
     prevCount.current = regions.length;
   }, [regions, announce]);
 
-  useEffect(() => {
-    const isTyping = (t: EventTarget | null) =>
-      t instanceof HTMLElement &&
-      (t.isContentEditable ||
-        t.tagName === 'TEXTAREA' ||
-        t.tagName === 'SELECT' ||
-        (t instanceof HTMLInputElement && !['range', 'radio', 'checkbox', 'color', 'button'].includes(t.type)));
-    const down = (e: KeyboardEvent) => {
-      if (e.code === 'Space' && !isTyping(e.target) && !(e.target instanceof HTMLButtonElement)) {
-        e.preventDefault();
-        setSpaceHeld(true);
+  const [helpOpen, setHelpOpen] = useState(false);
+
+  const addRegionInView = useCallback(() => {
+    if (!doc) return;
+    const c = screenToImage(view, viewport.width / 2, viewport.height / 2);
+    const visW = Math.min(doc.meta.width, viewport.width / view.scale);
+    const visH = Math.min(doc.meta.height, viewport.height / view.scale);
+    const w = Math.max(8, Math.round(visW / 4));
+    const h = Math.max(8, Math.round(visH / 4));
+    const cx = Math.min(Math.max(c.x, w / 2), doc.meta.width - w / 2);
+    const cy = Math.min(Math.max(c.y, h / 2), doc.meta.height - h / 2);
+    dispatch({
+      type: 'add',
+      region: makeRegion(newRegionId(), { kind: 'rect', x: Math.round(cx - w / 2), y: Math.round(cy - h / 2), w, h }, settings),
+    });
+  }, [doc, view, viewport, settings]);
+
+  const nudge = useCallback(
+    (dx: number, dy: number, resize: boolean) => {
+      if (!selected) return;
+      const unit = Math.max(1, Math.round(1 / view.scale));
+      const sx = dx * unit;
+      const sy = dy * unit;
+      let shape = selected.shape;
+      if (resize) {
+        const b = shapeBounds(shape);
+        const to = { ...b, w: Math.max(1, b.w + sx), h: Math.max(1, b.h + sy) };
+        shape = fitShapeToBox(shape, b, to);
+      } else {
+        shape = moveShape(shape, sx, sy);
       }
-      const mod = e.ctrlKey || e.metaKey;
-      if (mod && !e.altKey && (e.key === 'z' || e.key === 'Z') && !isTyping(e.target)) {
-        e.preventDefault();
-        if (e.shiftKey) redo();
-        else undo();
-        return;
-      }
-      if (mod && !e.altKey && (e.key === 'y' || e.key === 'Y') && !isTyping(e.target)) {
-        e.preventDefault();
-        redo();
-        return;
-      }
-      if (e.key === '\\' && !isTyping(e.target)) {
-        e.preventDefault();
-        setCompareKey(true);
-      }
-      if ((e.key === 'Delete' || e.key === 'Backspace') && !isTyping(e.target) && editor.selectedId) {
-        e.preventDefault();
-        deleteRegion(editor.selectedId);
-      }
-    };
-    const up = (e: KeyboardEvent) => {
-      if (e.code === 'Space') setSpaceHeld(false);
-      if (e.key === '\\') setCompareKey(false);
-    };
-    const blur = () => {
-      setSpaceHeld(false);
-      setCompareKey(false);
-    };
-    window.addEventListener('keydown', down);
-    window.addEventListener('keyup', up);
-    window.addEventListener('blur', blur);
-    return () => {
-      window.removeEventListener('keydown', down);
-      window.removeEventListener('keyup', up);
-      window.removeEventListener('blur', blur);
-    };
-  }, [editor.selectedId, deleteRegion, undo, redo]);
+      if (!intersectsImage(shape, meta.width, meta.height)) return;
+      dispatch({ type: 'replace', region: { ...selected, shape }, coalesceKey: `${selected.id}:${resize ? 'resize' : 'move'}` });
+    },
+    [selected, view.scale, meta],
+  );
+
+  useShortcuts({
+    enabled: !exportOpen && !helpOpen,
+    hasImage: !!doc,
+    setTool,
+    brushStep: (dir) =>
+      setBrushSize((b) => Math.min(ranges.brushSize[1], Math.max(ranges.brushSize[0], Math.round(dir > 0 ? b * 1.25 + 1 : b * 0.8)))),
+    setMethod: (method) => onSettings({ method }, 'method'),
+    addRegion: addRegionInView,
+    nudge,
+    cycleSelection: (dir) => {
+      if (!regions.length) return;
+      const i = regions.findIndex((r) => r.id === editor.selectedId);
+      const next = i < 0 ? (dir > 0 ? 0 : regions.length - 1) : (i + dir + regions.length) % regions.length;
+      dispatch({ type: 'select', id: regions[next].id });
+      announce(`${regionName(regions, regions[next])} selected.`);
+    },
+    deleteSelected: () => editor.selectedId && deleteRegion(editor.selectedId),
+    deselect: () => {
+      regionTool.handler.cancel();
+      dispatch({ type: 'select', id: null });
+    },
+    undo,
+    redo,
+    zoom: zoomStep,
+    fit,
+    actualSize,
+    setPanHeld: setSpaceHeld,
+    setCompareHeld: setCompareKey,
+    open: openPicker,
+    exportImage: () => {
+      setExportError(null);
+      setExportOpen(true);
+    },
+    help: () => setHelpOpen(true),
+  });
 
   const panMode = spaceHeld || tool === 'pan';
   const cursor = panMode ? 'grab' : (regionTool.hover?.cursor ?? (tool === 'select' ? 'default' : 'crosshair'));
@@ -320,6 +345,16 @@ export function App() {
           />
         )}
         {doc && <CompareButton active={showOriginal} onChange={setCompareHeld} />}
+        <button
+          type="button"
+          className={styles.helpBtn}
+          onClick={() => setHelpOpen(true)}
+          aria-label="Keyboard shortcuts"
+          aria-keyshortcuts="?"
+          title="Keyboard shortcuts (?)"
+        >
+          ?
+        </button>
         {doc && (
           <button
             type="button"
@@ -426,6 +461,8 @@ export function App() {
           onExport={runExport}
         />
       )}
+
+      <HelpDialog open={helpOpen} onClose={() => setHelpOpen(false)} />
 
       <div aria-live="polite" className="visually-hidden" data-testid="announcer">
         {announcement}

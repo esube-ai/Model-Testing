@@ -134,3 +134,13 @@
 }
 
 .exportBtn { margin-left: auto; }
+
+.helpBtn {
+  min-width: 40px;
+  min-height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  font-weight: 700;
+  cursor: pointer;
+}
