@@ -159,3 +159,58 @@ export async function sampleImagePixel(page: Page, ix: number, iy: number): Prom
   const meta = await page.getByTestId('preview-canvas').evaluate((c: HTMLCanvasElement) => [Number(c.dataset.imageWidth), Number(c.dataset.imageHeight)]);
   return sampleCanvasAt(page, (ix + 0.5) / meta[0], (iy + 0.5) / meta[1]);
 }
+
+export interface ExportResult {
+  filename: string;
+  bytes: Uint8Array;
+}
+
+/** Opens the export dialog, picks options and returns the downloaded file. */
+export async function exportImage(
+  page: Page,
+  opts: { format?: 'PNG (lossless)' | 'JPEG' | 'WebP'; quality?: number; filename?: string } = {},
+): Promise<ExportResult> {
+  await page.getByRole('button', { name: 'Export…' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Export image' });
+  await expect(dialog).toBeVisible();
+  if (opts.format) await dialog.getByRole('radio', { name: opts.format }).check();
+  if (opts.quality !== undefined) await dialog.getByLabel('Quality').fill(String(opts.quality));
+  if (opts.filename !== undefined) await dialog.getByLabel('File name').fill(opts.filename);
+  const [download] = await Promise.all([page.waitForEvent('download'), dialog.getByRole('button', { name: 'Export' }).click()]);
+  await expect(dialog).toBeHidden();
+  return { filename: download.suggestedFilename(), bytes: await readDownload(download) };
+}
+
+/** Decodes an encoded image in the browser and returns its size and the pixels of `rect`. */
+export async function decodeInBrowser(
+  page: Page,
+  bytes: Uint8Array,
+  rect?: { x: number; y: number; w: number; h: number },
+): Promise<{ width: number; height: number; pixels: number[] }> {
+  return page.evaluate(
+    async ({ b64, rect }) => {
+      const bin = atob(b64);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      const bmp = await createImageBitmap(new Blob([arr]), { imageOrientation: 'from-image' });
+      let pixels: number[] = [];
+      if (rect) {
+        const c = new OffscreenCanvas(bmp.width, bmp.height);
+        const ctx = c.getContext('2d')!;
+        ctx.drawImage(bmp, 0, 0);
+        pixels = Array.from(ctx.getImageData(rect.x, rect.y, rect.w, rect.h).data);
+      }
+      return { width: bmp.width, height: bmp.height, pixels };
+    },
+    { b64: Buffer.from(bytes).toString('base64'), rect },
+  );
+}
+
+export function countOccurrences(hay: Uint8Array, needle: number[]): number {
+  let n = 0;
+  outer: for (let i = 0; i + needle.length <= hay.length; i++) {
+    for (let j = 0; j < needle.length; j++) if (hay[i + j] !== needle[j]) continue outer;
+    n++;
+  }
+  return n;
+}

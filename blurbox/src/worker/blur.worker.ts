@@ -1,7 +1,8 @@
 /// <reference lib="webworker" />
 import { blitRaster, hasTransparency, type Raster } from '../processing/raster';
 import { fitWithin, PREVIEW_MAX_SIDE } from '../processing/limits';
-import { changedArea, renderArea, renderVisible, scaleRegion } from '../processing/composite';
+import { changedArea, renderArea, renderFull, renderVisible, scaleRegion } from '../processing/composite';
+import { stripMetadata } from '../processing/stripMetadata';
 import type { ImageMeta, Region } from '../model/types';
 import { context2d, decodeImage } from './decode';
 import type { WorkerRequest, WorkerResponse } from './protocol';
@@ -112,6 +113,40 @@ async function detail(req: Extract<WorkerRequest, { type: 'detail' }>): Promise<
   post({ type: 'detail', id: req.id, rect, bitmap }, [bitmap]);
 }
 
+const EXPORT_MIME = { png: 'image/png', jpeg: 'image/jpeg', webp: 'image/webp' } as const;
+
+/**
+ * Flattens every region into a fresh copy of the full-resolution pixels and re-encodes it. Only
+ * these processed pixels are encoded: no layers, masks or original image, and no source metadata.
+ */
+async function exportImage(req: Extract<WorkerRequest, { type: 'export' }>): Promise<void> {
+  const img = requireImage();
+  const { width, height } = img.original;
+  let flat: Raster | null = renderFull(img.original, req.regions);
+  let canvas = new OffscreenCanvas(width, height);
+  context2d(canvas).putImageData(new ImageData(flat.data as Uint8ClampedArray<ArrayBuffer>, width, height), 0, 0);
+  flat = null;
+  if (req.format === 'jpeg' && img.meta.hasAlpha) {
+    // JPEG has no alpha; the encoder would turn transparency black. Put it on white instead.
+    const opaque = new OffscreenCanvas(width, height);
+    const ctx = context2d(opaque);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(canvas, 0, 0);
+    canvas.width = canvas.height = 1;
+    canvas = opaque;
+  }
+  const quality = req.format === 'png' ? undefined : Math.min(1, Math.max(0.01, req.quality));
+  const encoded = await canvas.convertToBlob({ type: EXPORT_MIME[req.format], quality });
+  canvas.width = canvas.height = 1;
+  if (encoded.type !== EXPORT_MIME[req.format]) {
+    throw new Error(`This browser cannot encode ${req.format.toUpperCase()} images. Please choose another format.`);
+  }
+  const clean = stripMetadata(new Uint8Array(await encoded.arrayBuffer()));
+  const blob = new Blob([clean], { type: EXPORT_MIME[req.format] });
+  post({ type: 'exported', id: req.id, blob, width, height });
+}
+
 async function handle(req: WorkerRequest): Promise<void> {
   switch (req.type) {
     case 'load':
@@ -121,7 +156,7 @@ async function handle(req: WorkerRequest): Promise<void> {
     case 'detail':
       return detail(req);
     case 'export':
-      throw new Error('Export is not available yet.');
+      return exportImage(req);
   }
 }
 

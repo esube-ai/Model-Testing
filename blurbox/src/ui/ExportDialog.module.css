@@ -1,0 +1,46 @@
+.dialog {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 0;
+  width: min(440px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+}
+
+.dialog::backdrop { background: rgb(0 0 0 / 0.6); }
+
+.form { display: flex; flex-direction: column; gap: 14px; padding: 18px; }
+.title { margin: 0; font-size: 1.15rem; }
+.meta { margin: 0; color: var(--text-muted); font-size: 0.9rem; }
+
+.formats { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.formats legend { padding: 0; margin-bottom: 6px; color: var(--text-muted); font-size: 0.85rem; }
+.radio { display: flex; align-items: center; gap: 8px; min-height: 32px; cursor: pointer; }
+.radio input { width: 18px; height: 18px; accent-color: var(--accent); }
+
+.field { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; align-items: center; }
+.field label { grid-column: 1 / -1; color: var(--text-muted); font-size: 0.85rem; }
+.field input[type='range'] { width: 100%; accent-color: var(--accent); }
+
+.filename {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+.filename:focus-within { outline: 3px solid var(--focus); outline-offset: 1px; }
+.filename input { flex: 1; min-width: 0; border: 0; background: transparent; padding: 8px 10px; min-height: 40px; }
+.filename input:focus-visible { outline: none; }
+.filename span { padding: 0 10px; color: var(--text-muted); }
+
+.privacy { margin: 0; font-size: 0.82rem; color: var(--text-muted); }
+.error { margin: 0; background: #4a1714; color: #ffd9d4; padding: 8px 10px; border-radius: 6px; }
+
+.actions { display: flex; justify-content: flex-end; gap: 8px; }
+.primary, .secondary { min-height: 40px; padding: 8px 16px; border-radius: var(--radius); cursor: pointer; font-weight: 600; }
+.primary { background: var(--accent-strong); color: var(--on-accent); border: 0; }
+.secondary { background: transparent; border: 1px solid var(--border); }
+.primary:disabled, .secondary:disabled { opacity: 0.6; cursor: progress; }

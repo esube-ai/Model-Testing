@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { defaultBrushSize, defaultSettings, rangesFor, type RegionSettings } from './model/defaults';
 import { editorReducer, initialEditorState } from './model/editor';
-import type { ImageMeta, Tool } from './model/types';
+import type { ExportFormat, ImageMeta, Tool } from './model/types';
 import { maxPixelsForDevice, PREVIEW_MAX_PIXELS } from './processing/limits';
 import { RegionPanel, regionName } from './ui/RegionPanel';
 import { Toolbar } from './ui/Toolbar';
@@ -13,6 +13,7 @@ import { PreviewRenderer } from './view/previewRenderer';
 import { useDetailTile } from './view/useDetailTile';
 import { CompareButton } from './ui/CompareButton';
 import { HistoryControls } from './ui/HistoryControls';
+import { ExportDialog, EXTENSIONS } from './ui/ExportDialog';
 import { canRedo, canUndo } from './model/history';
 import { createSurface, type PreviewSurface } from './view/surface';
 import { useRegionTool, withDraft } from './view/useRegionTool';
@@ -63,6 +64,9 @@ export function App() {
   const [compareHeld, setCompareHeld] = useState(false);
   const [compareKey, setCompareKey] = useState(false);
   const showOriginal = compareHeld || compareKey;
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
 
   const meta = doc?.meta ?? EMPTY_META;
@@ -184,6 +188,33 @@ export function App() {
     announce('Redone.');
   }, [editor.history, regionTool.handler, announce]);
 
+  const runExport = useCallback(
+    async ({ format, quality, filename }: { format: ExportFormat; quality: number; filename: string }) => {
+      setExporting(true);
+      setExportError(null);
+      try {
+        const res = await workerClient.request({ type: 'export', regions, format, quality });
+        const name = `${filename}.${EXTENSIONS[format]}`;
+        const url = URL.createObjectURL(res.blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = name;
+        a.rel = 'noopener';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10_000);
+        setExportOpen(false);
+        announce(`Exported ${name}, ${res.width} by ${res.height} pixels.`);
+      } catch (e) {
+        setExportError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setExporting(false);
+      }
+    },
+    [regions, announce],
+  );
+
   // Announce newly added regions.
   const prevCount = useRef(0);
   useEffect(() => {
@@ -289,6 +320,19 @@ export function App() {
           />
         )}
         {doc && <CompareButton active={showOriginal} onChange={setCompareHeld} />}
+        {doc && (
+          <button
+            type="button"
+            className={`${styles.primary} ${styles.exportBtn}`}
+            onClick={() => {
+              setExportError(null);
+              setExportOpen(true);
+            }}
+            aria-keyshortcuts="Control+S Meta+S"
+          >
+            Export…
+          </button>
+        )}
       </header>
 
       {doc && (
@@ -369,6 +413,17 @@ export function App() {
           settings={settings}
           ranges={ranges}
           onSettings={onSettings}
+        />
+      )}
+
+      {doc && (
+        <ExportDialog
+          open={exportOpen}
+          meta={doc.meta}
+          busy={exporting}
+          error={exportError}
+          onCancel={() => setExportOpen(false)}
+          onExport={runExport}
         />
       )}
 
