@@ -147,3 +147,15 @@ export async function overlayRegions(page: Page) {
     })),
   );
 }
+
+/** Waits until the worker has finished re-rendering the preview. */
+export async function previewSettled(page: Page): Promise<void> {
+  await expect(page.getByTestId('preview-canvas')).toHaveAttribute('data-busy', 'false');
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+}
+
+/** Samples the on-screen canvas at an image-pixel position. */
+export async function sampleImagePixel(page: Page, ix: number, iy: number): Promise<[number, number, number]> {
+  const meta = await page.getByTestId('preview-canvas').evaluate((c: HTMLCanvasElement) => [Number(c.dataset.imageWidth), Number(c.dataset.imageHeight)]);
+  return sampleCanvasAt(page, (ix + 0.5) / meta[0], (iy + 0.5) / meta[1]);
+}

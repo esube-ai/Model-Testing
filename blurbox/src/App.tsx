@@ -9,6 +9,7 @@ import { ACCEPT_ATTR, useImageInput } from './ui/useImageInput';
 import { ZoomControls } from './ui/ZoomControls';
 import { CanvasView } from './view/CanvasView';
 import { RegionOverlay } from './view/RegionOverlay';
+import { PreviewRenderer } from './view/previewRenderer';
 import { createSurface, type PreviewSurface } from './view/surface';
 import { useRegionTool, withDraft } from './view/useRegionTool';
 import { actualSizeView, fitView, nextZoomStep, zoomTo, type Size, type View } from './view/viewTransform';
@@ -18,6 +19,7 @@ import styles from './App.module.css';
 interface Doc {
   meta: ImageMeta;
   surface: PreviewSurface;
+  renderer: PreviewRenderer;
 }
 
 const MAX_PIXELS = maxPixelsForDevice(navigator, location.search);
@@ -52,6 +54,9 @@ export function App() {
   const [editor, dispatch] = useReducer(editorReducer, initialEditorState);
   const needsFit = useRef(false);
   const coarse = useCoarsePointer();
+  const [surfaceVersion, setSurfaceVersion] = useState(0);
+  const [previewBusy, setPreviewBusy] = useState(false);
+
 
   const meta = doc?.meta ?? EMPTY_META;
   const regions = editor.history.present;
@@ -66,6 +71,25 @@ export function App() {
     tool, regions, selectedId: editor.selectedId, view, meta, brushSize, settings, dispatch,
   });
   const liveRegions = useMemo(() => withDraft(regions, regionTool.draft), [regions, regionTool.draft]);
+
+  // Live preview: every change to the regions (including in-progress drags) re-renders.
+  const renderer = doc?.renderer;
+  useEffect(() => {
+    renderer?.update(liveRegions);
+  }, [renderer, liveRegions]);
+  useEffect(() => () => renderer?.dispose(), [renderer]);
+
+  const selected = regions.find((r) => r.id === editor.selectedId) ?? null;
+  const onSettings = useCallback(
+    (patch: Partial<RegionSettings>, field: string) => {
+      setSettings((s) => ({ ...s, ...patch }));
+      if (selected) {
+        const discrete = field === 'method' || field === 'edge';
+        dispatch({ type: 'update', id: selected.id, patch, coalesceKey: discrete ? undefined : `${selected.id}:${field}` });
+      }
+    },
+    [selected],
+  );
 
   useEffect(() => {
     if (doc && needsFit.current && viewport.width > 0 && viewport.height > 0) {
@@ -91,7 +115,15 @@ export function App() {
         dispatch({ type: 'reset' });
         setSettings(defaultSettings(res.meta.width, res.meta.height));
         setBrushSize(defaultBrushSize(res.meta.width, res.meta.height));
-        setDoc({ meta: res.meta, surface: createSurface(res.preview, res.previewScale) });
+        const surface = createSurface(res.preview, res.previewScale);
+        const renderer = new PreviewRenderer(
+          workerClient,
+          surface,
+          () => setSurfaceVersion(surface.version),
+          (e) => setError(`Preview failed: ${e.message}`),
+          setPreviewBusy,
+        );
+        setDoc({ meta: res.meta, surface, renderer });
         if (res.meta.downscaled) {
           setNotice(
             `This image (${res.meta.sourceWidth} × ${res.meta.sourceHeight}) is larger than this device can process, ` +
@@ -223,7 +255,7 @@ export function App() {
           <CanvasView
             meta={doc.meta}
             surface={doc.surface}
-            surfaceVersion={doc.surface.version}
+            surfaceVersion={surfaceVersion}
             detail={null}
             showOriginal={false}
             view={view}
@@ -234,6 +266,7 @@ export function App() {
             cursor={cursor}
             tool={regionTool.handler}
             label={`Image ${doc.meta.name}. ${regions.length} regions.`}
+            busy={previewBusy}
           >
             <RegionOverlay
               regions={liveRegions}
@@ -266,7 +299,17 @@ export function App() {
         )}
       </main>
 
-      {doc && <RegionPanel regions={regions} selectedId={editor.selectedId} dispatch={dispatch} onDelete={deleteRegion} />}
+      {doc && (
+        <RegionPanel
+          regions={regions}
+          selectedId={editor.selectedId}
+          dispatch={dispatch}
+          onDelete={deleteRegion}
+          settings={settings}
+          ranges={ranges}
+          onSettings={onSettings}
+        />
+      )}
 
       <div aria-live="polite" className="visually-hidden" data-testid="announcer">
         {announcement}

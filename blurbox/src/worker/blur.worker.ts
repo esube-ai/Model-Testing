@@ -1,8 +1,8 @@
 /// <reference lib="webworker" />
-import { hasTransparency, type Raster } from '../processing/raster';
-import { fitWithin, PREVIEW_MAX_PIXELS, PREVIEW_MAX_SIDE } from '../processing/limits';
-import { MIME_BY_FORMAT } from '../processing/imageInfo';
-import type { ImageMeta } from '../model/types';
+import { blitRaster, hasTransparency, type Raster } from '../processing/raster';
+import { fitWithin, PREVIEW_MAX_SIDE } from '../processing/limits';
+import { changedArea, renderArea, scaleRegion } from '../processing/composite';
+import type { ImageMeta, Region } from '../model/types';
 import { context2d, decodeImage } from './decode';
 import type { WorkerRequest, WorkerResponse } from './protocol';
 
@@ -14,6 +14,10 @@ interface Loaded {
   original: Raster;
   previewScale: number;
   previewOriginal: Raster;
+  /** previewOriginal with the last rendered regions applied. */
+  previewComposite: Raster;
+  /** Regions (in preview coordinates) that previewComposite currently reflects. */
+  previewRegions: Region[];
 }
 
 let image: Loaded | null = null;
@@ -52,17 +56,72 @@ async function load(req: Extract<WorkerRequest, { type: 'load' }>): Promise<void
     format: decoded.format,
     hasAlpha: hasTransparency(original),
   };
-  image = { meta, original, previewScale: p.scale, previewOriginal };
+  image = {
+    meta,
+    original,
+    previewScale: p.scale,
+    previewOriginal,
+    previewComposite: { width: p.width, height: p.height, data: new Uint8ClampedArray(previewOriginal.data) },
+    previewRegions: [],
+  };
   const preview = previewCanvas.transferToImageBitmap();
   post({ type: 'loaded', id: req.id, meta, previewScale: p.scale, preview }, [preview]);
+}
+
+function requireImage(): Loaded {
+  if (!image) throw new Error('No image is open.');
+  return image;
+}
+
+function toBitmap(r: Raster): Promise<ImageBitmap> {
+  return createImageBitmap(new ImageData(r.data as Uint8ClampedArray<ArrayBuffer>, r.width, r.height));
+}
+
+/** Re-renders only the part of the preview affected by what changed since the last render. */
+async function render(req: Extract<WorkerRequest, { type: 'render' }>): Promise<void> {
+  const img = requireImage();
+  const next = req.regions.map((r) => scaleRegion(r, img.previewScale));
+  const dirty = changedArea(img.previewRegions, next, img.previewOriginal.width, img.previewOriginal.height);
+  img.previewRegions = next;
+  if (dirty.w <= 0 || dirty.h <= 0) {
+    post({ type: 'patch', id: req.id, x: 0, y: 0, bitmap: null });
+    return;
+  }
+  const { rect, raster } = renderArea(img.previewOriginal, next, dirty);
+  blitRaster(img.previewComposite, raster, rect.x, rect.y);
+  const bitmap = await toBitmap(raster);
+  post({ type: 'patch', id: req.id, x: rect.x, y: rect.y, bitmap }, [bitmap]);
+}
+
+/** Full-resolution render of a visible area, for when the view is zoomed past the preview's resolution. */
+async function detail(req: Extract<WorkerRequest, { type: 'detail' }>): Promise<void> {
+  const img = requireImage();
+  const { rect, raster } = renderArea(img.original, req.regions, req.rect);
+  if (rect.w <= 0 || rect.h <= 0) throw new Error('Empty detail area');
+  // Crop back to the requested area (renderArea may have grown it for blur context).
+  const want = req.rect;
+  const x0 = Math.max(want.x, rect.x) - rect.x;
+  const y0 = Math.max(want.y, rect.y) - rect.y;
+  const w = Math.min(want.x + want.w, rect.x + rect.w) - rect.x - x0;
+  const h = Math.min(want.y + want.h, rect.y + rect.h) - rect.y - y0;
+  const full = await toBitmap(raster);
+  const outW = Math.max(1, Math.round(w * Math.min(1, req.outScale)));
+  const outH = Math.max(1, Math.round(h * Math.min(1, req.outScale)));
+  const bitmap = await createImageBitmap(full, x0, y0, w, h, { resizeWidth: outW, resizeHeight: outH, resizeQuality: 'high' });
+  full.close();
+  post({ type: 'detail', id: req.id, rect: { x: rect.x + x0, y: rect.y + y0, w, h }, bitmap }, [bitmap]);
 }
 
 async function handle(req: WorkerRequest): Promise<void> {
   switch (req.type) {
     case 'load':
       return load(req);
-    default:
-      throw new Error(`Not implemented: ${req.type} (${MIME_BY_FORMAT.png}, ${PREVIEW_MAX_PIXELS}, ${image ? 1 : 0})`);
+    case 'render':
+      return render(req);
+    case 'detail':
+      return detail(req);
+    case 'export':
+      throw new Error('Export is not available yet.');
   }
 }
 

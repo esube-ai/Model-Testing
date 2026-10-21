@@ -39,6 +39,7 @@ interface Props {
   cursor: string;
   tool: ToolHandler | null;
   label: string;
+  busy?: boolean;
   children?: ReactNode;
 }
 
@@ -269,6 +270,7 @@ export function CanvasView(props: Props) {
         data-view-tx={view.tx}
         data-view-ty={view.ty}
         data-showing={showOriginal ? 'original' : 'result'}
+        data-busy={props.busy ? 'true' : 'false'}
       />
       {props.children}
     </div>
