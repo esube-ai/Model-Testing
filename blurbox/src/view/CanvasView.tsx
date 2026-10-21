@@ -251,6 +251,7 @@ export function CanvasView(props: Props) {
       role="application"
       aria-roledescription="image canvas"
       aria-label={props.label}
+      aria-describedby="canvas-help"
       tabIndex={0}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -273,6 +274,11 @@ export function CanvasView(props: Props) {
         data-busy={props.busy ? 'true' : 'false'}
         data-detail={detail && !showOriginal ? `${detail.x},${detail.y},${detail.w},${detail.h}` : ''}
       />
+      <p id="canvas-help" className="visually-hidden">
+        Draw regions with the pointer, or press N to add a rectangle. Arrow keys move the selected region, Alt plus
+        arrow keys resize it, period and comma select the next or previous region. Press question mark for all
+        shortcuts.
+      </p>
       {props.children}
     </div>
   );
