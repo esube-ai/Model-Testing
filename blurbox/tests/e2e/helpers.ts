@@ -49,7 +49,8 @@ export async function makeImage(page: Page, opts: PatternOptions): Promise<Uint8
 
 export async function openViaPicker(page: Page, bytes: Uint8Array, name: string, mimeType: string): Promise<void> {
   await page.getByTestId('file-input').setInputFiles({ name, mimeType, buffer: Buffer.from(bytes) as never });
-  await expect(page.getByTestId('image-info')).toBeVisible();
+  await expect(page.getByTestId('image-info')).toBeAttached();
+  await expect(page.getByTestId('preview-canvas')).toBeVisible();
 }
 
 function toBase64(bytes: Uint8Array): string {

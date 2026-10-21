@@ -310,7 +310,7 @@ export function App() {
       <header className={styles.header}>
         <h1 className={styles.logo}>BlurBox</h1>
         <button type="button" className={styles.primary} onClick={openPicker} aria-keyshortcuts="Control+O Meta+O">
-          Open image
+          Open<span className={styles.wide}> image</span>
         </button>
         <input
           ref={inputRef}
@@ -328,15 +328,6 @@ export function App() {
           </p>
         )}
         {doc && (
-          <ZoomControls
-            scale={view.scale}
-            onZoomIn={() => zoomStep(1)}
-            onZoomOut={() => zoomStep(-1)}
-            onFit={fit}
-            onActualSize={actualSize}
-          />
-        )}
-        {doc && (
           <HistoryControls
             canUndo={canUndo(editor.history)}
             canRedo={canRedo(editor.history)}
@@ -344,7 +335,6 @@ export function App() {
             onRedo={redo}
           />
         )}
-        {doc && <CompareButton active={showOriginal} onChange={setCompareHeld} />}
         <button
           type="button"
           className={styles.helpBtn}
@@ -417,6 +407,18 @@ export function App() {
               coarse={coarse}
             />
           </CanvasView>
+        ) : null}
+        {doc ? (
+          <div className={styles.viewBar}>
+            <ZoomControls
+              scale={view.scale}
+              onZoomIn={() => zoomStep(1)}
+              onZoomOut={() => zoomStep(-1)}
+              onFit={fit}
+              onActualSize={actualSize}
+            />
+            <CompareButton active={showOriginal} onChange={setCompareHeld} />
+          </div>
         ) : (
           <div className={styles.empty}>
             <h2>Hide parts of an image</h2>

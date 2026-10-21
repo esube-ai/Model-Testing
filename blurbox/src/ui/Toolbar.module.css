@@ -69,11 +69,11 @@
 @media (max-width: 719px) {
   .toolbar {
     flex-direction: row;
+    flex-wrap: wrap;
     align-items: center;
+    gap: 4px 12px;
     border-right: 0;
     border-top: 1px solid var(--border);
-    overflow-x: auto;
-    overflow-y: hidden;
     padding: 4px 8px;
   }
   .tools { flex-direction: row; }

@@ -30,6 +30,8 @@ body {
 }
 
 button, input, select { font: inherit; color: inherit; }
+/* No double-tap zoom delay on controls. */
+button, input, label { touch-action: manipulation; }
 
 :focus-visible {
   outline: 3px solid var(--focus);

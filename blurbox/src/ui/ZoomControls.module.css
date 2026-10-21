@@ -26,3 +26,8 @@
   font-variant-numeric: tabular-nums;
   font-size: 0.9rem;
 }
+
+@media (max-width: 719px) {
+  .btn { min-width: 36px; padding: 0 6px; }
+  .level { min-width: 44px; font-size: 0.8rem; }
+}

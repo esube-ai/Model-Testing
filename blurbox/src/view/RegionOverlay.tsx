@@ -34,7 +34,8 @@ function ShapeEl({ region, view, className }: { region: Region; view: View; clas
   let d = `M${p[0] * k + view.tx} ${p[1] * k + view.ty}`;
   for (let i = 2; i < p.length; i += 2) d += `L${p[i] * k + view.tx} ${p[i + 1] * k + view.ty}`;
   if (p.length === 2) d += 'l0.01 0';
-  return <path className={`${className} ${styles.brush}`} d={d} strokeWidth={Math.max(1, s.size * k)} />;
+  // Inline style: the outline classes set stroke-width in CSS, which would beat an SVG attribute.
+  return <path className={`${className} ${styles.brush}`} d={d} style={{ strokeWidth: Math.max(1, s.size * k) }} />;
 }
 
 /** Outlines and handles for regions, drawn in screen space so lines stay crisp at any zoom. */

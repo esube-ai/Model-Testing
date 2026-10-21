@@ -15,6 +15,7 @@
 .hint { margin: 0; color: var(--text-muted); font-size: 0.9rem; }
 
 .list {
+  flex-shrink: 0;
   list-style: none;
   margin: 0;
   padding: 0;
@@ -39,6 +40,7 @@
 .item[aria-pressed='true'] { border-color: var(--accent); background: #1e3354; }
 
 .selected {
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   gap: 12px;
