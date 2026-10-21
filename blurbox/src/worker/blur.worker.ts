@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 import { blitRaster, hasTransparency, type Raster } from '../processing/raster';
 import { fitWithin, PREVIEW_MAX_SIDE } from '../processing/limits';
-import { changedArea, renderArea, scaleRegion } from '../processing/composite';
+import { changedArea, renderArea, renderVisible, scaleRegion } from '../processing/composite';
 import type { ImageMeta, Region } from '../model/types';
 import { context2d, decodeImage } from './decode';
 import type { WorkerRequest, WorkerResponse } from './protocol';
@@ -96,20 +96,20 @@ async function render(req: Extract<WorkerRequest, { type: 'render' }>): Promise<
 /** Full-resolution render of a visible area, for when the view is zoomed past the preview's resolution. */
 async function detail(req: Extract<WorkerRequest, { type: 'detail' }>): Promise<void> {
   const img = requireImage();
-  const { rect, raster } = renderArea(img.original, req.regions, req.rect);
+  const { rect, raster } = renderVisible(img.original, req.regions, req.rect);
   if (rect.w <= 0 || rect.h <= 0) throw new Error('Empty detail area');
-  // Crop back to the requested area (renderArea may have grown it for blur context).
-  const want = req.rect;
-  const x0 = Math.max(want.x, rect.x) - rect.x;
-  const y0 = Math.max(want.y, rect.y) - rect.y;
-  const w = Math.min(want.x + want.w, rect.x + rect.w) - rect.x - x0;
-  const h = Math.min(want.y + want.h, rect.y + rect.h) - rect.y - y0;
-  const full = await toBitmap(raster);
-  const outW = Math.max(1, Math.round(w * Math.min(1, req.outScale)));
-  const outH = Math.max(1, Math.round(h * Math.min(1, req.outScale)));
-  const bitmap = await createImageBitmap(full, x0, y0, w, h, { resizeWidth: outW, resizeHeight: outH, resizeQuality: 'high' });
-  full.close();
-  post({ type: 'detail', id: req.id, rect: { x: rect.x + x0, y: rect.y + y0, w, h }, bitmap }, [bitmap]);
+  let bitmap = await toBitmap(raster);
+  const s = Math.min(1, req.outScale);
+  if (s < 1) {
+    const full = bitmap;
+    bitmap = await createImageBitmap(full, {
+      resizeWidth: Math.max(1, Math.round(rect.w * s)),
+      resizeHeight: Math.max(1, Math.round(rect.h * s)),
+      resizeQuality: 'high',
+    });
+    full.close();
+  }
+  post({ type: 'detail', id: req.id, rect, bitmap }, [bitmap]);
 }
 
 async function handle(req: WorkerRequest): Promise<void> {

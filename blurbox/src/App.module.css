@@ -118,3 +118,17 @@
 }
 
 .dropHint { border: 3px dashed var(--accent); pointer-events: none; }
+
+.originalBadge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  margin: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--warn-bg);
+  color: var(--warn-text);
+  font-weight: 600;
+  z-index: 4;
+  pointer-events: none;
+}

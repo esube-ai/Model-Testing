@@ -163,6 +163,36 @@ export function renderArea(source: Raster, regions: readonly Region[], area: Int
   return { rect, raster };
 }
 
+/** How far outside its write area a region's result depends on input pixels. */
+function regionMargin(r: Region): number {
+  if (r.method === 'blur') return Math.ceil(blurReach(r.blurSigma));
+  if (r.method === 'pixelate') return Math.max(1, Math.round(r.pixelBlock));
+  return 0;
+}
+
+/**
+ * Renders exactly `area` without processing whole regions: crops `area` plus enough margin for
+ * every region that can influence it (blur reach, pixel cells, stacked overlaps), applies the
+ * regions to the crop, and returns the `area` part. Pixel-identical to a full render, but its cost
+ * scales with the visible area rather than with region size (used for zoomed-in detail views).
+ */
+export function renderVisible(source: Raster, regions: readonly Region[], area: IntRect): { rect: IntRect; raster: Raster } {
+  const image = { x: 0, y: 0, w: source.width, h: source.height };
+  const rect = intersectRect(area, image);
+  if (isEmptyRect(rect)) return { rect, raster: { width: 0, height: 0, data: new Uint8ClampedArray(0) } };
+  const allMargins = regions.reduce((m, r) => m + regionMargin(r), 0);
+  const reach = expandRect(rect, allMargins);
+  const relevant = regions.filter((r) => {
+    const read = regionReadRect(r, source.width, source.height);
+    return !isEmptyRect(read) && !isEmptyRect(intersectRect(read, reach));
+  });
+  const margin = relevant.reduce((m, r) => m + regionMargin(r), 0);
+  const crop = intersectRect(expandRect(rect, margin), image);
+  const work = cropRaster(source, crop);
+  applyRegions(work, relevant.map((r) => translateRegion(r, -crop.x, -crop.y)));
+  return { rect, raster: cropRaster(work, { x: rect.x - crop.x, y: rect.y - crop.y, w: rect.w, h: rect.h }) };
+}
+
 /** Full-image render: a fresh copy of `source` with every region applied. */
 export function renderFull(source: Raster, regions: readonly Region[]): Raster {
   const out: Raster = { width: source.width, height: source.height, data: new Uint8ClampedArray(source.data) };

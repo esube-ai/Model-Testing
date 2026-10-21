@@ -1,0 +1,14 @@
+.btn {
+  min-height: 40px;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  white-space: nowrap;
+}
+
+.btn[aria-pressed='true'] { background: var(--warn-bg); color: var(--warn-text); border-color: var(--warn-text); }

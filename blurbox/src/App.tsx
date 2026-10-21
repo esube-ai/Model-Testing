@@ -10,6 +10,8 @@ import { ZoomControls } from './ui/ZoomControls';
 import { CanvasView } from './view/CanvasView';
 import { RegionOverlay } from './view/RegionOverlay';
 import { PreviewRenderer } from './view/previewRenderer';
+import { useDetailTile } from './view/useDetailTile';
+import { CompareButton } from './ui/CompareButton';
 import { createSurface, type PreviewSurface } from './view/surface';
 import { useRegionTool, withDraft } from './view/useRegionTool';
 import { actualSizeView, fitView, nextZoomStep, zoomTo, type Size, type View } from './view/viewTransform';
@@ -56,6 +58,9 @@ export function App() {
   const coarse = useCoarsePointer();
   const [surfaceVersion, setSurfaceVersion] = useState(0);
   const [previewBusy, setPreviewBusy] = useState(false);
+  const [compareHeld, setCompareHeld] = useState(false);
+  const [compareKey, setCompareKey] = useState(false);
+  const showOriginal = compareHeld || compareKey;
 
 
   const meta = doc?.meta ?? EMPTY_META;
@@ -78,6 +83,8 @@ export function App() {
     renderer?.update(liveRegions);
   }, [renderer, liveRegions]);
   useEffect(() => () => renderer?.dispose(), [renderer]);
+
+  const detail = useDetailTile(workerClient, doc?.meta ?? null, doc?.surface ?? null, view, viewport, liveRegions);
 
   const selected = regions.find((r) => r.id === editor.selectedId) ?? null;
   const onSettings = useCallback(
@@ -180,6 +187,10 @@ export function App() {
         e.preventDefault();
         setSpaceHeld(true);
       }
+      if (e.key === '\\' && !isTyping(e.target)) {
+        e.preventDefault();
+        setCompareKey(true);
+      }
       if ((e.key === 'Delete' || e.key === 'Backspace') && !isTyping(e.target) && editor.selectedId) {
         e.preventDefault();
         deleteRegion(editor.selectedId);
@@ -187,8 +198,12 @@ export function App() {
     };
     const up = (e: KeyboardEvent) => {
       if (e.code === 'Space') setSpaceHeld(false);
+      if (e.key === '\\') setCompareKey(false);
     };
-    const blur = () => setSpaceHeld(false);
+    const blur = () => {
+      setSpaceHeld(false);
+      setCompareKey(false);
+    };
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
     window.addEventListener('blur', blur);
@@ -234,6 +249,7 @@ export function App() {
             onActualSize={actualSize}
           />
         )}
+        {doc && <CompareButton active={showOriginal} onChange={setCompareHeld} />}
       </header>
 
       {doc && (
@@ -256,8 +272,8 @@ export function App() {
             meta={doc.meta}
             surface={doc.surface}
             surfaceVersion={surfaceVersion}
-            detail={null}
-            showOriginal={false}
+            detail={detail}
+            showOriginal={showOriginal}
             view={view}
             onViewChange={setView}
             viewport={viewport}
@@ -268,7 +284,13 @@ export function App() {
             label={`Image ${doc.meta.name}. ${regions.length} regions.`}
             busy={previewBusy}
           >
+            {showOriginal && (
+              <p className={styles.originalBadge} role="status">
+                Original
+              </p>
+            )}
             <RegionOverlay
+              hidden={showOriginal}
               regions={liveRegions}
               selectedId={regionTool.draft?.id ?? editor.selectedId}
               view={view}

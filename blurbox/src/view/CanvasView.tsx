@@ -271,6 +271,7 @@ export function CanvasView(props: Props) {
         data-view-ty={view.ty}
         data-showing={showOriginal ? 'original' : 'result'}
         data-busy={props.busy ? 'true' : 'false'}
+        data-detail={detail && !showOriginal ? `${detail.x},${detail.y},${detail.w},${detail.h}` : ''}
       />
       {props.children}
     </div>

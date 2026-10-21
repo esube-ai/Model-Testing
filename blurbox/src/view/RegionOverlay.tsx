@@ -10,6 +10,7 @@ interface Props {
   viewport: Size;
   brushCursor: { x: number; y: number; size: number } | null;
   coarse: boolean;
+  hidden?: boolean;
 }
 
 function ShapeEl({ region, view, className }: { region: Region; view: View; className: string }) {
@@ -37,7 +38,8 @@ function ShapeEl({ region, view, className }: { region: Region; view: View; clas
 }
 
 /** Outlines and handles for regions, drawn in screen space so lines stay crisp at any zoom. */
-export function RegionOverlay({ regions, selectedId, view, viewport, brushCursor, coarse }: Props) {
+export function RegionOverlay({ regions, selectedId, view, viewport, brushCursor, coarse, hidden }: Props) {
+  if (hidden) return null;
   const selected = regions.find((r) => r.id === selectedId);
   const hs = coarse ? 16 : 10;
   return (

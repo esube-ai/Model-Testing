@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  applyRegion, applyRegions, changedArea, regionReadRect, renderArea, renderFull, rimSigma, scaleRegion,
+  applyRegion, applyRegions, changedArea, regionReadRect, renderArea, renderFull, renderVisible, rimSigma, scaleRegion,
 } from '../../src/processing/composite';
 import { blurReach, boxSizesForGauss, gaussianBlur } from '../../src/processing/gaussian';
 import { pixelInside, rasterizeShape } from '../../src/processing/mask';
@@ -221,5 +221,23 @@ describe('rendering', () => {
   it('masks are hard-edged: values are only 0 or 1', () => {
     const m = rasterizeShape(SHAPES.ellipse, { x: 0, y: 0, w: W, h: H });
     expect(new Set(m.inside)).toEqual(new Set([0, 1]));
+  });
+});
+
+describe('zoomed-in detail rendering', () => {
+  it('renderVisible is pixel-identical to a full render for any area', () => {
+    const src = noiseRaster(W, H, 21);
+    const regions: Region[] = [
+      { ...region(SHAPES.rect, 'blur', { blurSigma: 5 }), id: 'a' },
+      { ...region(SHAPES.ellipse, 'pixelate', { pixelBlock: 7 }), id: 'b' },
+      { ...region(SHAPES.brush, 'blur', { edge: 'feather', featherWidth: 3 }), id: 'c' },
+      { ...region({ kind: 'rect', x: 50, y: 30, w: 30, h: 30 }, 'fill'), id: 'd' },
+    ];
+    const full = renderFull(src, regions);
+    for (const area of [{ x: 0, y: 0, w: W, h: H }, { x: 33, y: 21, w: 17, h: 13 }, { x: 80, y: 0, w: 16, h: 40 }, { x: 5, y: 50, w: 9, h: 22 }]) {
+      const { rect, raster } = renderVisible(src, regions, area);
+      expect(rect).toEqual(area);
+      expect(raster.data).toEqual(cropRaster(full, area).data);
+    }
   });
 });
